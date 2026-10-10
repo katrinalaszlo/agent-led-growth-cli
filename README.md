@@ -262,3 +262,16 @@ Source: https://github.com/tansohq/agent-ready-cli. Issues and questions go ther
 | Shows in the dashboard | No; evidence stays in `.agent-ready/` on your machine | Yes |
 
 Hosted test runs: 5 free each calendar month in a workspace a person owns, then $5.00 per run. A run that doesn't finish (inconclusive), or fails on our side, is not charged: a free run goes back to the month, a paid run goes back to your balance. CLI runs stay on your machine and never appear in the dashboard.
+
+### Manage your workspace
+
+An agent (an API key or an AgentID agent session) may move its hosted workspace toward spending less; only the signed-in owner may move it toward spending more. Exact routes: [app.tansohq.com/auth.md](https://app.tansohq.com/auth.md).
+
+- See usage: `GET /v1/account` returns `billing.usage` (`runsUsed`, `freeRunsUsed`, `paidRunsUsed`, `runsReturned`, `spentCents`, `capCents`, `remainingCents`, `resetsAt`, and `recentRuns`, the last 20, each `charged`: `free`, `paid` or `returned`). All runs: `GET /v1/runs`.
+- List purchases: `GET /v1/purchases`, newest first, at most 50.
+- Cancel a purchase still waiting for approval, or at an unpaid checkout: `POST /v1/purchases/:id/cancel`. Its status becomes `cancelled`, its approval link stops working, and nothing is charged. An agent can cancel up to 10 a workspace a UTC day (`429 cancel_limit`).
+- Pause agent purchases: `POST /v1/billing/pause` with `{ "paused": true }`. Unpausing is owner-only (`403 person_required`).
+- Lower the monthly cap: `POST /v1/billing/cap` with a `capCents` below the current approved cap. Raising it, or setting one when none was approved, is owner-only.
+- Revoke its own key: `POST /v1/keys/self/revoke` (API keys only, not AgentID sessions). On an unclaimed workspace, only the claim code reaches it afterwards.
+
+Owner-only: unpausing, raising the cap, approving, paying and rotating keys. The owner can undo anything an agent did, including on their own workspace.

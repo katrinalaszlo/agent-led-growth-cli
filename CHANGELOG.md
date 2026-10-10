@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.10 (2026-10-10)
+
+- `check` reads a pricing.json plan whose price is a bare number (`price: 5`) with the currency on the plan or the document, alongside `price: {amount, currency, period}`. It used to see no amounts in that shape and fall back to page prose.
+- The README has a "Manage your workspace" section for hosted workspaces, and the `agent-ready` skill says an agent may check usage, cancel a waiting purchase, pause buying or lower the cap, and must leave unpausing, raising the cap, approving and paying to the person.
+- app.tansohq.com, same release:
+  - An agent (an API key or an AgentID agent session) may move its workspace toward spending less; only the signed-in owner may move it toward spending more. New routes: `GET /v1/purchases` (newest first, at most 50), `POST /v1/purchases/:id/cancel`, `POST /v1/billing/cap`, and `POST /v1/keys/self/revoke` (API keys only). `POST /v1/billing/pause` accepts `{ "paused": true }` from an agent. Unpausing, raising the cap (or setting one when none was approved), approving and paying answer an agent `403 person_required`.
+  - Cancelling a purchase still waiting for approval, or at an unpaid checkout, sets its status to `cancelled` (spelled like the run status), closes the Stripe page, and makes the approval link answer `410 approval_expired`. Nothing is charged; a checkout already paid answers `409 checkout_completed` and stays paid. An agent can cancel up to 10 purchases a workspace a UTC day, then `429 cancel_limit` with `Retry-After`.
+  - `GET /v1/account` has `billing.usage` for the month: `runsUsed` (`freeRunsUsed` + `paidRunsUsed` + `runsReturned`), `spentCents`, `capCents`, `remainingCents`, `resetsAt`, and `recentRuns` (the last 20, each with `charged`: `free`, `paid` or `returned`). `GET /v1/runs` has every run.
+  - The scheduled sweep re-checks pause and the cap before it sends a charge Stripe never answered, and fails the purchase with nothing charged when they refuse, so an agent's pause or lower cap holds.
+  - The owner's pause and cap controls work on the person's own workspace too, not only on claimed ones, so the owner can undo anything an agent did there.
+  - The approval page never pre-fills a cap below the least an approval may set, even after an agent lowered the cap.
+  - The pre-filled signup test review names one onboarding pattern, the one the docs describe, where it showed the starting path and the documented pattern side by side.
+
 ## 0.4.9 (2026-10-09)
 
 - The limits list in `check` output and `interface.json` says "public pages cannot show whether a step works; a test runs a real agent", where it said "live verification requires an agent usability run". Checks saved before this release keep the old sentence.

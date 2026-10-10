@@ -163,7 +163,9 @@ export function extractPricingJson(observations, bodies) {
   const page = pages(observations, bodies, ["pricing_json"]).map((p) => ({ ...p, doc: parseJsonSafe(p.text) })).find((p) => p.doc && !p.html);
   if (!page) return null;
   const plans = Array.isArray(page.doc.plans)
-    ? page.doc.plans.map((p) => ({ id: p?.id ?? null, name: p?.name ?? null, amount: typeof p?.price?.amount === "number" ? p.price.amount : null, currency: p?.price?.currency ?? null, period: p?.price?.period ?? p?.billing_period ?? null, provisioningUrl: p?.trial?.api_provisioning_url ?? null }))
+    // `price` is usually { amount, currency, period }; a bare number with the currency beside it, on the plan or the
+    // document, says the same thing.
+    ? page.doc.plans.map((p) => ({ id: p?.id ?? null, name: p?.name ?? null, amount: typeof p?.price?.amount === "number" ? p.price.amount : typeof p?.price === "number" ? p.price : null, currency: p?.price?.currency ?? (typeof p?.price === "number" ? p?.currency ?? page.doc.currency ?? null : null), period: p?.price?.period ?? p?.billing_period ?? null, provisioningUrl: p?.trial?.api_provisioning_url ?? null }))
     : [];
   return fact({ revenueModel: page.doc.revenue_model?.type ?? null, plans, keys: Object.keys(page.doc) }, page.obs.id, JSON.stringify(page.doc).slice(0, 200));
 }

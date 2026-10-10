@@ -54,3 +54,9 @@ Only when the developer asks: read the prompt file in `files.prompts`, make the 
 - Docs on another domain. It stays on the product's registrable domain.
 - More than 36 requests' worth of pages per run (well-known paths plus at most 14 followed links).
 - Whether signup actually works. That needs `agent-ready test`, which runs a real agent, creates a real account and costs model use.
+
+## Hosted runs and buying
+
+- On a hosted workspace at app.tansohq.com you may check usage (`GET /v1/account`, `billing.usage`), cancel a purchase still waiting for approval (`POST /v1/purchases/:id/cancel`), pause buying (`POST /v1/billing/pause`) or lower the cap (`POST /v1/billing/cap`).
+- Leave unpausing, raising the cap, approving and paying to the person; they answer an agent `403 person_required`.
+- Routes and limits: https://app.tansohq.com/auth.md, section "Manage your workspace".
