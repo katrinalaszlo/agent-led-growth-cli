@@ -197,7 +197,8 @@ export function classify(result, onboarding, resultMd = "") {
   if (!evaluation.success && evaluation.stoppedAt !== "credential_rejected" && unreachable >= 2) return { outcome: "inconclusive", exitCode: 3, reason: `The agent could not connect to the product (${unreachable} connection failures). This is about the test environment, not the product.` };
   if (evaluation.stoppedAt === "human_required") {
     if (PERSON_FIRST.has(onboarding)) return { outcome: "handoff", exitCode: 0, reason: "The agent stopped where a person sets up access, which is what your onboarding model says." };
-    return { outcome: "failed", exitCode: 1, reason: "The agent reached a step only a person can do." };
+    // NEEDS_HUMAN.md is the agent's own reading of the page it stopped on, not something the run proved.
+    return { outcome: "failed", exitCode: 1, reason: "The agent did not get a key: rejected; cause unknown. Its notes (NEEDS_HUMAN.md) say it stopped at a step for a person; the run did not confirm that." };
   }
   if (evaluation.stoppedAt === "credential_rejected") return { outcome: "failed", exitCode: 1, reason: "The agent got a key, but the checker's calls did not pass." };
   return { outcome: "failed", exitCode: 1, reason: "The agent did not get a key." };

@@ -37,12 +37,27 @@ const FIX = {
   understand: "Publish every plan and price in /pricing.json, and keep \"contact us\" off plans an agent should be able to buy.",
   signup: "Add one API call that creates an account and returns a key, with no CAPTCHA or email loop. Let a person claim it later.",
   access: "Issue scoped API keys through the API and document how an agent authenticates, for example in /auth.md.",
-  pay: "Let a person save a card once and the agent buy through the API. When it can't, answer 402 with a link the person can approve.",
+  pay: "Document on your own domain how an agent buys a plan: a person saves a card once and the agent buys through the API, or a 402 answer carries a link the person can approve. A purchase path documented only on a payments provider's site is not read by this check.",
   use: "Publish an OpenAPI spec for the actions customers need, with structured errors an agent can act on.",
   manage: "Expose plan changes, usage, and limits through the API so an agent can raise a cap without the dashboard.",
 };
 
 const SIGNUP_PATTERNS = new Set(["try_then_claim", "limited_until_claimed", "agent_is_customer", "agent_identity"]);
+
+// A sentence for each value a pattern's `needs` can hold (interface@1 lists them); an unknown value is a bug here,
+// not a word to print.
+const NEEDS_SENTENCE = {
+  inbox: "Needs an inbox the agent can read.",
+  cli: "Needs a shell where the agent can run the product's CLI.",
+  wallet: "Needs a wallet the agent can pay from.",
+  agent_identity: "Needs an identity provider the agent can sign in with.",
+};
+function needsSentences(needs) {
+  return needs.map((need) => {
+    if (!NEEDS_SENTENCE[need]) throw new Error(`no sentence for need "${need}"`);
+    return NEEDS_SENTENCE[need];
+  }).join(" ");
+}
 
 function step(id, state, reason, basedOn = [], tip = null) {
   const out = { id, name: STEP_NAME[id], area: PILLAR[id], question: STEP_QUESTION[id], state, reason, basedOn: [...new Set(basedOn.filter(Boolean))] };
@@ -89,7 +104,7 @@ function signup(doc) {
   const refs = (p) => (p?.evidence || []).map((e) => e.obs);
   // The pattern's reason already names AgentID, what the agent needs, and whether the owner is shared.
   if (self?.provider === "AgentID") return step("signup", "agent_can", self.reason, refs(self));
-  if (self && self.needs.length) return step("signup", "agent_can", `The docs describe an agent signing up on its own (${self.name}). It needs: ${self.needs.join(", ")}.`, refs(self));
+  if (self && self.needs.length) return step("signup", "agent_can", `The docs describe an agent signing up on its own (${self.name}). ${needsSentences(self.needs)}`, refs(self));
   // "Agent is the customer" has no person step, and its boundary text says so ("None documented. ..."), which does
   // not read after "A person steps in".
   const boundary = !self?.humanBoundary ? "" : /^None\b/.test(self.humanBoundary) ? " No person step is documented: the agent holds the account itself." : ` A person steps in ${self.humanBoundary.charAt(0).toLowerCase()}${self.humanBoundary.slice(1)}`;
@@ -97,7 +112,7 @@ function signup(doc) {
   if (existing?.cli === "token") return step("signup", "handoff", "A person creates the account and a token. The agent's CLI takes the token from a flag or an environment variable, with no browser.", refs(existing));
   if (existing?.cli === "browser") return step("signup", "handoff", "A person creates the account and signs the CLI in through a browser; no token option was found in the pages read. The agent carries on from there.", refs(existing));
   if (existing) return step("signup", "handoff", "A person creates the account and gives the agent a key. The agent carries on from there.", refs(existing));
-  return step("signup", "needs_person", "No way for an agent to sign up was found in the pages read. A person may have to create the account; only a real agent run can confirm.");
+  return step("signup", "needs_person", "The pages read document no way for an agent to sign up. A person may have to create the account; only a real agent run can confirm.");
 }
 
 function access(doc, signupStep) {
@@ -149,7 +164,9 @@ function pay(doc) {
   // Pay-per-request wording is easy to misread: a billing product describing its own
   // customers' metering reads the same as an agent paying. Only a live test settles it.
   if (perRequest) return step("pay", "not_checked", "The docs mention paying per request. A test with a real agent shows whether it can actually pay.", (perRequest.evidence || []).map((e) => e.obs));
-  if (paidPlans.length || paidText.length) return step("pay", "needs_person", "Paid plans are published, but nothing documents a way for an agent to buy one, so a person has to check out.", refs);
+  // Only the product's own domain is read: a purchase path on a payments provider's site (Stripe Projects lists
+  // Cloudflare, Neon, Turso and others on stripe.com) is not seen here, so the sentence says what was read.
+  if (paidPlans.length || paidText.length) return step("pay", "needs_person", "Paid plans are published. The pages read document no way for an agent to buy one, so a person may have to check out.", refs);
   if (plans.length || observed.length) return step("pay", "not_checked", "Only free plans were found, so there is nothing to pay for yet.", refs);
   return step("pay", "not_checked", "No plans were found in the pages read.");
 }

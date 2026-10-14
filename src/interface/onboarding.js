@@ -16,7 +16,9 @@ const SIGNALS = {
   // A person can take ownership afterwards.
   claim: /\bclaim(?:s|ed|ing)? (?:it|this|the|your|their) (?:account|project|workspace|deployment|bucket|inbox|resources?)\b|\bclaim (?:url|code|link|token|flow|page|email)\b|\bclaim_url\b|\bclaimUrl\b|\/claim\b|\bunclaimed\b|\bclaimable\b|\b(?:human|owner|person) (?:can |may |will )?(?:later )?claim\b|\battach (?:a |the )?(?:human )?owner\b|\badopt (?:the |this )?workspace\b/i,
   // What the agent made goes away unless someone keeps it.
-  // Tied to the account or resource: "quotes expire after 5 minutes" is not this.
+  // Tied to the account or resource: "quotes expire after 5 minutes" is not this. The sentence must name an account,
+  // project, workspace, key or token and not a stored thing (STORED_THING below): Supermemory's "temporary facts drop
+  // after they expire" is a memory's TTL, not an account awaiting an owner.
   expiry: /\b(?:unclaimed|temporary|anonymous)\b[^.]{0,80}\b(?:expire|deleted|removed)|\b(?:account|project|deployment|bucket|workspace)s? (?:expire|are deleted|is deleted)\b[^.]{0,40}\b(?:after|in|within|unless)\b|\bauto-?delet\w*|\b\d+[- ](?:minute|hour|day)s? to claim\b/i,
   // Before a person steps in, the agent can do only part of the job.
   restricted: /\b(?:only|just) (?:send|email|message|write)s? (?:mail |email |messages )?to (?:the|its|your|their) (?:human|owner)\b|\brestricted (?:until|before|to (?:the|its|your) (?:human|owner))\b|\brestrictions? (?:lift|are lifted|are removed)\b|\buntil (?:the )?(?:human|owner|account) (?:verifies|claims|is verified)\b|\buntil (?:verified|claimed|verification)\b|\blimited (?:scope|access) until\b/i,
@@ -33,8 +35,8 @@ const SIGNALS = {
   // A person has to set access up before the agent starts.
   // A token a person creates counts the same way: GitHub's "personal access token", Vercel's "create a token on the
   // tokens page", Neon's "authenticate with a Neon API key", MarginFront's "Get a secret API key (`mf_sk_*`) from the
-  // dashboard's Developer Zone".
-  humanFirst: /\bpersonal access tokens?\b|\bcreate (?:a |an )?(?:new )?(?:access |API )?token (?:on|in|from) (?:the |your )?(?:\w+ )?(?:tokens? page|dashboard|settings|account settings|console)\b|\bauthenticate (?:with|using) (?:a |an |your )?(?:[A-Z]\w+ )?API key\b|\bmanage (?:your )?API keys? (?:at|in|from|on)\b|\b(?:generate|get|find|create|copy) (?:a |an |your )?(?:new )?(?:secret |live |test )?API key\b[^.\n]{0,40}?\b(?:in|from|at|on|under) (?:the |your )?(?:dashboard|console|portal|settings|account)\b|\bcreate (?:an |your )?API key (?:in|from) (?:the |your )?(?:dashboard|console|portal)\b|\b(?:sign|log) ?in to (?:the |your )?(?:dashboard|console|portal)\b|\blink (?:your|a) (?:Stripe )?account\b|\btell the user to complete sign-?in\b|\bbrowser was opened for authentication\b/i,
+  // dashboard's Developer Zone", Supermemory's "API requests require an API key from the console".
+  humanFirst: /\bpersonal access tokens?\b|\bcreate (?:a |an )?(?:new )?(?:access |API )?token (?:on|in|from) (?:the |your )?(?:\w+ )?(?:tokens? page|dashboard|settings|account settings|console)\b|\bauthenticate (?:with|using) (?:a |an |your )?(?:[A-Z]\w+ )?API key\b|\bmanage (?:your )?API keys? (?:at|in|from|on)\b|\b(?:generate|get|find|create|copy|requires?|required) (?:a |an |your )?(?:new )?(?:secret |live |test )?API key\b[^.\n]{0,40}?\b(?:in|from|at|on|under) (?:the |your )?(?:dashboard|console|portal|settings|account)\b|\bcreate (?:an |your )?API key (?:in|from) (?:the |your )?(?:dashboard|console|portal)\b|\b(?:sign|log) ?in to (?:the |your )?(?:dashboard|console|portal)\b|\blink (?:your|a) (?:Stripe )?account\b|\btell the user to complete sign-?in\b|\bbrowser was opened for authentication\b/i,
   // A request is paid for in the request itself. A bare 402 is not this: products also
   // use it to mean "claim first" (Cosmic) or "over your plan" (Inkbox).
   payPerRequest: /\bx402\b|\bX-PAYMENT\b|\bPAYMENT-REQUIRED\b/,
@@ -202,6 +204,12 @@ function findAgentIdSignIn(doc, bodies) {
 // a billing product's "your customers can check out without an account", "No signup required for your end users".
 // Not "your client": that is the reader's HTTP or MCP client (Cosmic, fly.io, Exa).
 export const DOMAIN_ACTORS = /\byour (?:customers?|users?|end[- ]users?|buyers?|subscribers?)\b|\b(?:end[- ]users?|shoppers?)\b|\bguest checkout\b/i;
+// A sentence about a stored thing expiring is the product's data model, not an account: Supermemory's "temporary
+// facts drop after they expire" and its OpenAPI example `"forgetReason": "temporary project deadline"` next to
+// `forgetAfter`. Expiry counts only in a sentence that names an account-like thing and no stored thing; the
+// "temporary account/project" signup wording is skipped where a stored thing is named.
+const ACCOUNT_THING = /\b(?:accounts?|projects?|workspaces?|deployments?|buckets?|inbox(?:es)?|sandbox(?:es)?|(?:API )?keys?|tokens?|resources?)\b/i;
+const STORED_THING = /\bmemor(?:y|ies)\b|\bforget\w*|\bdata\b|\brecords?\b|\bitems?\b|\bmessages?\b/i;
 // Agent signup said to be off: Browser Use's "Agent signup is off. Create an API key in Cloud".
 const SIGNUP_OFF = /\bagent[- ]?sign[- ]?ups? (?:is|are|was|has been) (?:currently |now |temporarily )?(?:off|disabled|closed|paused|unavailable|not (?:available|enabled|open|supported))\b/i;
 // A person without an account is a person signing up: fly.io's "`fly auth signup` is the same flow for a human without
@@ -239,7 +247,8 @@ const EXAMPLE_PAGE = /\/(?:templates?|examples?|starters?)\//i;
 const OAUTH_REGISTRATION = /\/(?:oauth2?|connect|clients?|dcr)\/regist(?:er|ration)\b/i;
 // Whether a sentence holding a match is about something else; such a match is skipped and the next one tried.
 const SKIP = {
-  bootstrap: (sentence) => DOMAIN_ACTORS.test(sentence) || SIGNUP_OFF.test(sentence) || PERSON_WITHOUT_ACCOUNT.test(sentence) || PAYMENT_WAY_IN.test(sentence) || CLIENT_REGISTRATION.test(sentence) || BROKERED.test(sentence),
+  bootstrap: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || SIGNUP_OFF.test(sentence) || PERSON_WITHOUT_ACCOUNT.test(sentence) || PAYMENT_WAY_IN.test(sentence) || CLIENT_REGISTRATION.test(sentence) || BROKERED.test(sentence) || (/^temporary\b/i.test(match) && STORED_THING.test(sentence)),
+  expiry: (sentence) => !ACCOUNT_THING.test(sentence) || STORED_THING.test(sentence),
   httpBootstrap: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || OAUTH_REGISTRATION.test(match),
   payPerRequest: (sentence, ownDomain) => DOMAIN_ACTORS.test(sentence) || SELLER.test(sentence) || PROTOCOL_DESCRIPTION.test(sentence) || paysElsewhere(sentence, ownDomain),
 };
@@ -371,16 +380,14 @@ export function detectOnboarding(doc, bodies) {
 
   if (has("payPerRequest")) patterns.push(pattern("pay_per_request", found, ["payPerRequest"], "The docs describe paying per request over HTTP 402, with no account needed first."));
 
-  const schemes = (doc.authentication?.methods || []).filter((m) => ["apiKey", "http", "oauth2"].includes(m.type));
-  if (has("humanFirst") || has("cliToken") || schemes.length) {
-    const reason = has("cliToken") ? "The docs describe a person creating a token that the agent then passes to the CLI with a flag or an environment variable, with no browser." : has("humanFirst") ? "The docs describe a person creating access (an account, key or payment method) that the agent then uses." : "The API declares credentials in its spec, which an agent can use once a person has created them.";
+  // Only the signup side says a person sets access up: a key made in a dashboard, a token a person creates. An auth
+  // scheme in the OpenAPI document (Turso's `bearerAuth: http bearer`) says how a request is signed, not who gets the
+  // key, so it never establishes this; with no signup evidence the answer is no pattern, and the funnel says so.
+  if (has("humanFirst") || has("cliToken")) {
+    const reason = has("cliToken") ? "The docs describe a person creating a token that the agent then passes to the CLI with a flag or an environment variable, with no browser." : "The docs describe a person creating access (an account, key or payment method) that the agent then uses.";
     const p = pattern("existing_account", found, ["humanFirst", "cliToken"], reason);
     // How the agent's CLI gets signed in, when the docs say: "token" runs unattended, "browser" needs a person once.
     p.cli = has("cliToken") ? "token" : has("cliBrowserLogin") ? "browser" : null;
-    if (!p.evidence.length) {
-      p.evidence = schemes.flatMap((m) => m.evidence || []).slice(0, EVIDENCE_PER_SIGNAL);
-      p.status = "documented";
-    }
     patterns.push(p);
   }
 

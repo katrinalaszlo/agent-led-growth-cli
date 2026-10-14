@@ -87,6 +87,10 @@ export function renderStandards(standards, style) {
   const out = [
     `${head}${standards.benchmarks.length} third-party benchmarks of your public surface ${style.dim(`(aeo-ready ${standards.generator.version})`)}`,
     `             Their checks and scores; they do not change the seven steps above.`,
+    `             ${style.dim("Sent your URL to isitagentready.com (Cloudflare) and AgentGrade's")}`,
+    `             ${style.dim("service; agentic-seo, Fern and Vercel fetched your pages from here.")}`,
+    `             ${style.dim("Runs one catalog at a time; for many products use --no-standards")}`,
+    `             ${style.dim("and run the catalog later.")}`,
   ];
   for (const b of standards.benchmarks) {
     const name = b.name.padEnd(12);
@@ -94,10 +98,10 @@ export function renderStandards(standards, style) {
       out.push(`    ${style.dim("·")} ${name}  ${style.red("did not run:")} ${b.error}`);
       continue;
     }
-    const score = `${b.score}/${b.maxScore}${b.grade ? ` ${b.grade}` : ""}`;
+    const score = `${b.id === "cloudflare" ? "level" : "score"} ${b.score}/${b.maxScore}${b.grade ? ` ${b.grade}` : ""}`;
     const counts = b.total ? `${b.passed}/${b.total} checks passed` : "no individual checks";
-    const mark = !b.total ? style.dim("·") : b.failed.length ? style.red("✗") : style.green("✓");
-    out.push(`    ${mark} ${name}  ${counts.padEnd(22)}  ${style.dim(`score ${score}`)}`);
+    const mark = !b.total ? style.dim("·") : b.passed === b.total ? style.green("✓") : style.red("✗");
+    out.push(`    ${mark} ${name}  ${counts.padEnd(22)}  ${style.dim(score)}`);
   }
   const failing = standards.benchmarks.filter((b) => b.failed.length);
   if (failing.length) out.push("", `  ${style.bold("Failed checks")}  ${style.dim("names as each benchmark reports them")}`);

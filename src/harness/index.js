@@ -11,8 +11,9 @@ import { createInbox, startPolling, deleteInbox } from "./mail.js";
 import * as stripeSubscription from "./tasks/stripe-subscription.js";
 import * as agentmailSend from "./tasks/agentmail-send.js";
 import { SIGNUP_TASKS } from "./tasks/signup.js";
+import * as payX402 from "./tasks/pay-x402.js";
 
-export const TASKS = { [stripeSubscription.task.id]: stripeSubscription, [agentmailSend.task.id]: agentmailSend, ...Object.fromEntries(SIGNUP_TASKS.map((t) => [t.task.id, t])) };
+export const TASKS = { [stripeSubscription.task.id]: stripeSubscription, [agentmailSend.task.id]: agentmailSend, ...Object.fromEntries(SIGNUP_TASKS.map((t) => [t.task.id, t])), ...Object.fromEntries(payX402.TASKS.map((t) => [t.id, { task: t, evaluate: payX402.evaluate }])) };
 export const MODES = ["signup", "given", "none"];
 
 // Inspect → journey (rules) → execute (agent, confined) → evaluate (deterministic) → reconcile. One task, one product.

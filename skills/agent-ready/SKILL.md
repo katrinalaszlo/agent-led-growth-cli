@@ -5,7 +5,7 @@ description: "Check whether an AI agent can find, sign up for, get a key to, use
 
 # agent-ready check
 
-`npx @tansohq/agent-ready check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part spawns `npx` and takes usually 1-3 minutes, up to 15 on a large site; `--no-standards` skips it when the developer wants only the seven steps, fast.
+`npx @tansohq/agent-ready check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing to the product, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part sends the product's URL to two benchmark services, Cloudflare's isitagentready.com and AgentGrade's, spawns `npx` and takes usually 1-3 minutes, up to 15 on a large site; `--no-standards` skips it when the developer wants only the seven steps, fast, or does not want the URL sent anywhere.
 
 ## If the developer asks for a test
 
@@ -53,7 +53,7 @@ Only when the developer asks: read the prompt file in `files.prompts`, make the 
 ## What it cannot see
 
 - Pages behind a login, and pages that render only with JavaScript.
-- Docs on another domain. It stays on the product's registrable domain.
+- Docs on another domain. It stays on the product's registrable domain. A purchase path documented on another company's site (a payments provider's catalog, such as Stripe Projects on stripe.com) is not read, so Pay says what the product's own pages document, not that no purchase API exists.
 - More than 36 requests' worth of pages per run (well-known paths plus at most 14 followed links).
 - Whether signup actually works. That needs `agent-ready test`, which runs a real agent, creates a real account and costs model use.
 

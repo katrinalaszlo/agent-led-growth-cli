@@ -25,7 +25,9 @@ const EXPECTED = {
   "archil.com": { primary: "agent_identity", also: ["existing_account"] },
   "keenable.ai": { primary: "agent_identity", also: ["pay_per_request"] },
   "paywithlocus.com": { primary: "try_then_claim", also: ["agent_identity", "pay_per_request"] },
-  "agentline.cloud": { primary: "try_then_claim", also: ["agent_identity"] },
+  // AgentLine's skill.md documents an OTP signup and AgentID; its only expiry words were "GET /v1/events (auto-deletes
+  // after read)", an event queue, which read as an account expiring until 2026-10-14.
+  "agentline.cloud": { primary: "agent_is_customer", also: ["agent_identity"] },
   // A usage-billing product for AI-agent companies: its agents and customers are records it bills, and a person gets
   // the key from the dashboard. test/billing-vocabulary.test.js checks the funnel it produces.
   "marginfront.com": { primary: "existing_account" },
@@ -134,6 +136,59 @@ for (const quote of CLI_TOKEN) {
     assert.match(existing.reason, /flag or an environment variable/);
   });
 }
+
+// Expiry wording about stored things is not an account awaiting an owner. The quotes are the two sentences that made
+// supermemory.ai read as "try first, claim later" on the live leaderboard (its OpenAPI document's `forgetReason`
+// example, and docs/concepts/graph-memory), read from the leaderboard document 2026-10-14.
+const SUPERMEMORY_TTL = [
+  `"forgetReason":{"description":"Optional reason for the scheduled forgetting. Only meaningful when forgetAfter is set.","example":"temporary project deadline","type":["string","null"]},"temporalContext":{"description":"Structured temporal metadata. Merged into the metadata JSON column.","type":"object"}`,
+  "Automatic forgetting Time-based — temporary facts drop after they expire (“exam tomorrow”, “meeting at 3pm today”). Contradiction — updates win for “what’s true now.”",
+];
+test("a memory's TTL is not an agent signing up or an account expiring", async () => {
+  const { onboarding } = await buildInterface({ url: "https://acme.dev/", version: "test", fetchSource: llmsOnly(SUPERMEMORY_TTL.join("\n\n")) });
+  assert.deepEqual(onboarding.patterns.filter((p) => AGENT_FIRST.includes(p.id)).map((p) => p.id), [], onboarding.patterns.map((p) => p.id).join(", "));
+});
+
+// The same expiry words about a project are the claim pattern: Neon's auth.md and Cosmic's agent-signup page, from
+// their leaderboard documents 2026-10-14.
+const PROJECT_EXPIRY = [
+  "Create and claim a temporary Neon project without an account. The unclaimed project dies at `expires_at` (72 hours today).",
+  "The one-curl signup flow (`POST /v3/agents/sign-up`) creates a free-tier project + bucket. The project starts unclaimed: 50 objects, 5 MB of media, no AI credits, and it is deleted after 14 days unless the human verifies.",
+];
+for (const quote of PROJECT_EXPIRY) {
+  test(`"${quote.slice(0, 40)}…" still reads as try first, claim later`, async () => {
+    const { onboarding } = await buildInterface({ url: "https://acme.dev/", version: "test", fetchSource: llmsOnly(quote) });
+    assert.equal(onboarding.primary, "try_then_claim", onboarding.patterns.map((p) => p.id).join(", "));
+  });
+}
+
+// An auth scheme in the OpenAPI document says how a request is signed, not that a person makes the key. Turso's
+// openapi.json declares `bearerAuth` and its llms.txt names API tokens and OAuth; nothing on the pages read says who
+// creates the token, so no onboarding pattern is inferred and the funnel says what the pages read document.
+test("bearer auth alone is not a person setting up access first", async () => {
+  const spec = JSON.stringify({ openapi: "3.1.0", info: { title: "Turso" }, security: [{ bearerAuth: [] }], components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } }, paths: { "/v1/organizations": { get: { summary: "List organizations", responses: { 200: {} } } } } });
+  const pages = {
+    "https://acme.dev/": ["text/html", "<html><head><title>Acme</title></head><body>Acme</body></html>"],
+    "https://acme.dev/llms.txt": ["text/plain", "# Acme\n\nAuthentication: API tokens via `turso auth api-tokens mint`, or OAuth 2.0 (authorization code + PKCE, dynamic client registration). Turso uses Bearer authentication, and requires your API token to be passed with a request.\n"],
+    "https://acme.dev/openapi.json": ["application/json", spec],
+  };
+  const fetchSource = async (url) => (pages[url] ? { ok: true, status: 200, url, contentType: pages[url][0], headers: {}, text: pages[url][1] } : { ok: false, status: 404, url, contentType: "text/html", headers: {}, text: "" });
+  const { doc, funnel } = await inspect({ url: "https://acme.dev/", version: "test", runId: "r", fetchSource });
+  assert.deepEqual(doc.onboarding.patterns.map((p) => p.id), []);
+  const steps = Object.fromEntries(funnel.steps.map((s) => [s.id, s]));
+  assert.equal(steps.signup.state, "needs_person");
+  assert.equal(steps.signup.reason, "The pages read document no way for an agent to sign up. A person may have to create the account; only a real agent run can confirm.");
+  assert.equal(steps.access.state, "needs_person");
+  assert.equal(steps.access.reason, "The docs describe bearer tokens and OAuth, but the pages read do not show how an agent gets one.");
+  assert.ok(doc.limits.includes("purchase paths documented on another company's site (a payments provider's catalog) are not read"), JSON.stringify(doc.limits));
+});
+
+// A key from the console is a person setting access up: Supermemory's llms.txt, from its leaderboard document 2026-10-14.
+test("\"require an API key from the console\" reads as a person setting up access first", async () => {
+  const { onboarding } = await buildInterface({ url: "https://acme.dev/", version: "test", fetchSource: llmsOnly("API requests require an API key from the console, sent as Authorization: Bearer <SUPERMEMORY_API_KEY>. Keep keys out of browser code.") });
+  assert.deepEqual(onboarding.patterns.map((p) => p.id), ["existing_account"]);
+  assert.equal(onboarding.patterns[0].status, "documented");
+});
 
 test("a CLI that signs in only through a browser is a handoff that says so", async () => {
   const quote = "The command launches a browser window where you authorize the Neon CLI to access your Neon account. You can also authenticate with a Neon API key instead.";
@@ -322,13 +377,13 @@ test("the product's own AgentID route in its OpenAPI document counts", async () 
 });
 
 // When another agent-first path leads (Locus, AgentLine: try first, claim later), Sign up and Access still say AgentID.
-for (const host of ["paywithlocus.com", "agentline.cloud"]) {
+for (const [host, primary, name] of [["paywithlocus.com", "try_then_claim", "Try first, claim later"], ["agentline.cloud", "agent_is_customer", "Agent is the customer"]]) {
   test(`${host}'s Sign up and Access name the AgentID path beside the primary one`, async () => {
     const { funnel } = await inspect({ url: `https://${host}/`, version: "test", runId: "r", fetchSource: replayFrom(JSON.parse(gunzipSync(readFileSync(new URL(`../fixtures/onboarding/${host}.json.gz`, import.meta.url)))).responses) });
     const steps = Object.fromEntries(funnel.steps.map((s) => [s.id, s]));
-    assert.equal(funnel.path.id, "try_then_claim");
+    assert.equal(funnel.path.id, primary);
     assert.equal(steps.signup.state, "agent_can");
-    assert.match(steps.signup.reason, /Try first, claim later/);
+    assert.match(steps.signup.reason, new RegExp(name));
     assert.match(steps.signup.reason, /also describe the agent signing in with AgentID/);
     assert.match(steps.access.reason, /Signed in with AgentID/);
   });

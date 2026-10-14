@@ -25,6 +25,19 @@ export function aeoReadyVersion() {
 // The values come from a third-party CLI's JSON and end up in a page, so a score is a finite number or null and a
 // grade or check id is a string.
 const number = (value) => (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? null : Number(value));
+// Cloudflare's score is a readiness level out of 5, not a count of checks, and its report heads each category with
+// "n/m passing"; aeo-ready keeps those as `categories`. Their sums are the counts, because aeo-ready up to 1.8.0
+// parsed only the PASS and OK lines of the report (its FAIL lines use another separator), so `checks` held no failure
+// and a Level 1 site read as all checks passed. The failed names still come from `checks`, so they are missing from
+// a catalog run with that aeo-ready and present from the fixed one.
+function counts(id, b, checks) {
+  if (id === "cloudflare" && b.categories && Object.keys(b.categories).length) {
+    const categories = Object.values(b.categories);
+    return { passed: categories.reduce((sum, c) => sum + Number(c.score), 0), total: categories.reduce((sum, c) => sum + Number(c.maxScore), 0) };
+  }
+  return { passed: checks.filter((c) => c.status === "pass" || c.status === "ok").length, total: checks.length };
+}
+
 function shapeBenchmark({ id, name }, b) {
   const durationMs = number(b?.durationMs);
   if (!b || b.available === false) return { id, name, score: null, maxScore: null, grade: null, passed: 0, total: 0, failed: [], error: b?.reason ? String(b.reason) : "did not run", durationMs };
@@ -35,16 +48,21 @@ function shapeBenchmark({ id, name }, b) {
     score: number(b.score),
     maxScore: number(b.maxScore),
     grade: b.grade ? String(b.grade) : null,
-    passed: checks.filter((c) => c.status === "pass" || c.status === "ok").length,
-    total: checks.length,
+    ...counts(id, b, checks),
     failed: checks.filter((c) => c.status === "fail" || c.status === "warn").map((c) => String(c.id)),
     error: null,
     durationMs,
   };
 }
 
-// The `standards` field of audit-report@1, from what runAeoReady returned.
+// Many checks in parallel each spawn the catalog's three npx tools, which fetch a site's whole sitemap at once;
+// the machine then runs out of local ports (EADDRNOTAVAIL) or DNS lookups fail (EAI_AGAIN).
+const EXHAUSTED = /EADDRNOTAVAIL|EAI_AGAIN/;
+export const EXHAUSTED_ADVICE = "local ports or DNS exhausted; run checks one at a time";
+
+// The `standards` field of audit-report@1, from what runAeoReady returned. warnings are aeo-ready's stderr lines.
 export function shapeStandards({ result, warnings, error }, version) {
+  if (error && warnings.some((line) => EXHAUSTED.test(line))) error = `${error}. ${EXHAUSTED_ADVICE}`;
   return {
     generator: { name: "aeo-ready", version },
     averageScore: number(result?.averageScore),

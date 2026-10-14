@@ -237,7 +237,10 @@ describe("verify: a run end to end with a stand-in agent", () => {
 
   it("stopping at a human step fails, unless the onboarding model says a person sets access up first", async () => {
     const files = { "PLAN.md": PLAN, "NEEDS_HUMAN.md": "# Needs a human\nCAPTCHA at https://acme.dev/signup\n" };
-    assert.equal((await run(files, "try_then_claim")).verdict.outcome, "failed");
+    const failed = (await run(files, "try_then_claim")).verdict;
+    assert.equal(failed.outcome, "failed");
+    // The agent's NEEDS_HUMAN.md is its own reading of the page; the run proved only that no key came back.
+    assert.equal(failed.reason, "The agent did not get a key: rejected; cause unknown. Its notes (NEEDS_HUMAN.md) say it stopped at a step for a person; the run did not confirm that.");
     assert.equal((await run(files, "existing_account")).verdict.outcome, "handoff");
   });
 });

@@ -17,6 +17,17 @@ function doc(overrides = {}) {
   };
 }
 
+test("what a self-serve signup needs is a sentence, one per need, never a bare token", () => {
+  const pattern = (needs) => ({ onboarding: { patterns: [{ id: "try_then_claim", name: "Try first, claim later", status: "documented", humanBoundary: "After the first job.", needs, evidence: [{ obs: "obs_1" }] }] } });
+  const reason = (needs) => buildFunnel(doc(pattern(needs))).steps.find((s) => s.id === "signup").reason;
+  assert.equal(reason(["inbox"]), "The docs describe an agent signing up on its own (Try first, claim later). Needs an inbox the agent can read.");
+  assert.equal(reason(["inbox", "cli"]), "The docs describe an agent signing up on its own (Try first, claim later). Needs an inbox the agent can read. Needs a shell where the agent can run the product's CLI.");
+  assert.match(reason(["wallet"]), /Needs a wallet the agent can pay from\.$/);
+  assert.match(reason(["agent_identity"]), /Needs an identity provider the agent can sign in with\.$/);
+  assert.doesNotMatch(reason(["inbox", "cli"]), /It needs:|\binbox\b\.|\bcli\b/);
+  assert.throws(() => reason(["fax"]), /no sentence for need "fax"/);
+});
+
 test("a product with no agent signup stops at Sign up and says what to build", () => {
   const f = buildFunnel(doc());
   assert.equal(f.stopsAt, "signup");

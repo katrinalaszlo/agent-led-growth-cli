@@ -7,9 +7,10 @@ import { SCHEMA_ID, validateInterface } from "./schema.js";
 import { runId as newRunId } from "../schema/ids.js";
 
 export const LIMITS = [
-  "GET requests only; nothing behind a login was read",
+  "GET requests only to the product's own pages for the seven steps; the standards catalog sends the product's URL to isitagentready.com and AgentGrade's service (--no-standards avoids that)",
   "no JavaScript rendering; client-rendered pages read as empty",
   "links followed only on the same registrable domain; docs on a third-party host are not read",
+  "purchase paths documented on another company's site (a payments provider's catalog) are not read",
   "no model-generated interpretation; every value is fetched or produced by a named rule",
   "public pages cannot show whether a step works; a test runs a real agent",
 ];

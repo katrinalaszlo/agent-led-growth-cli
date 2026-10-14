@@ -7,10 +7,10 @@ npx @tansohq/agent-ready check yourproduct.com   # free, reads public pages, wri
 npx @tansohq/agent-ready test                    # a real agent tries it; a separate check decides
 ```
 
-- **`check`** reads your public pages the way an agent does, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage), asks three questions about how agents should onboard, and writes one fix prompt per gap for your coding agent. It submits nothing.
+- **`check`** reads your public pages the way an agent does, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage), asks three questions about how agents should onboard, and writes one fix prompt per gap for your coding agent. It submits nothing to your product; its standards catalog sends your URL to two benchmark services (below).
 - **`test`** has a real agent (your local Claude Code) try the task on your product. The checker then calls your API with the agent's key, with no key and with a wrong key, using your `verify_call` or a call from your OpenAPI document.
 
-The loop: check, hand a fix prompt to your coding agent, deploy, check again, then test. Neither needs a Tanso account, and Tanso charges nothing for the CLI. `check` only reads public pages; `test` uses your own Claude Code model time (capped at $5 by default) and creates a real account on your product. (`audit` and `verify` still work as the old names.)
+The loop: check, hand a fix prompt to your coding agent, deploy, check again, then test. Neither needs a Tanso account, and Tanso charges nothing for the CLI. `check` reads public pages, and its standards catalog sends your URL to Cloudflare's isitagentready.com and AgentGrade's service (`--no-standards` skips that); `test` uses your own Claude Code model time (capped at $5 by default) and creates a real account on your product. (`audit` and `verify` still work as the old names.)
 
 ## Quickstart
 
@@ -61,7 +61,7 @@ Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `-
 | --- | --- | --- | --- |
 | Costs | nothing | nothing | your Claude Code's model use, capped at $5 by default (`--max-budget-usd`) |
 | Creates | `agent-ready.yml` (with your answers; with the defaults only if none exists) and a run folder | nothing (with `--yes`, saves an inferred `verify_call` to `agent-ready.yml`) | a real account on your product, named with the run id, and a run folder |
-| Sends requests to | your product's public pages | nothing to your product when `verify_call` is set; without one, GETs your public docs to pick a call; it runs `claude --version` and `claude auth status` | your product, Anthropic (through your Claude Code), AgentMail if `AGENTMAIL_API_KEY` is set |
+| Sends requests to | your product's public pages (GET); the standards catalog also sends your URL to isitagentready.com and AgentGrade's service, unless `--no-standards` | nothing to your product when `verify_call` is set; without one, GETs your public docs to pick a call; it runs `claude --version` and `claude auth status` | your product, Anthropic (through your Claude Code), AgentMail if `AGENTMAIL_API_KEY` is set |
 
 - **Cost.** Test runs in October 2026 cost $0.06 to $0.47 and took 27 seconds to 4 minutes; runs in September, with an earlier version of this tool, cost $1.10 to $3.00. Cost depends on the model your Claude Code uses and on how many turns the agent takes. Claude Code checks the cap after each turn, so a run can end slightly above it; a run stopped by the cap is reported as inconclusive, not as a failure.
 - **Accounts.** The account the agent creates stays on your product after the run; remove it the way you would any test account. With `AGENTMAIL_API_KEY` set, each run gets a fresh [AgentMail](https://agentmail.to) inbox, deleted when the run ends.
@@ -70,7 +70,7 @@ Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `-
 
 ## Limits
 
-- **`check`** sends GET requests only (the aeo-ready catalog's benchmarks make their own requests to your site and, for Cloudflare's, to isitagentready.com): at most 36 per run (well-known paths such as `/llms.txt`, plus at most 14 links it follows from your pages), all on your product's own registrable domain, so docs on another domain are not read. Each request times out after 10 seconds and reads at most 2 MB. It does not run JavaScript, so a page that renders only in the browser reads as empty, and it cannot see anything behind a login. Steps found in page text can be wrong; only a test with a real agent shows a step works. Running many checks in parallel can exhaust local ports, because the catalog's benchmarks fetch a site's whole sitemap at once; run checks one at a time, or run them with `--no-standards` and one catalog pass later.
+- **`check`** finds the seven steps with GET requests to your product's own pages: at most 36 per run (well-known paths such as `/llms.txt`, plus at most 14 links it follows from your pages), all on your product's own registrable domain, so docs on another domain are not read. Each request times out after 10 seconds and reads at most 2 MB. It does not run JavaScript, so a page that renders only in the browser reads as empty, and it cannot see anything behind a login. Steps found in page text can be wrong; only a test with a real agent shows a step works. The standards catalog is not GET-only to your product: it sends your product's URL to Cloudflare's isitagentready.com and to AgentGrade's service (through `agentgrade-cli`), which scan the site from there, while agentic-seo, Fern's afdocs and Vercel's agent-readability fetch your pages from your machine; `--no-standards` avoids all of it. Running many checks in parallel can exhaust local ports, because the catalog's benchmarks fetch a site's whole sitemap at once; run checks one at a time, or run them with `--no-standards` and one catalog pass later.
 - **`test`** gives the agent 40 turns (`--max-turns`) and $5 of model use (`--max-budget-usd`). A run is stopped after 30 minutes, or after 5 minutes with no output. The agent can reach only your product's own domain and its usual subdomains (`www`, `api`, `docs`, `app`, `auth`, `console`, `dashboard`, `developers`), the hosts in `verify_call` and `verify_exchange`, the registries in `verify_cli`, and anything in `verify_hosts`. It can use Bash, WebFetch and file tools, not a browser, so a signup that works only in a browser (a form that needs JavaScript, or a CAPTCHA) stops it. One run is one attempt; results can differ between runs.
 
 ## Check your product
@@ -79,15 +79,17 @@ Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `-
 npx @tansohq/agent-ready check yourproduct.com
 ```
 
-`check` reads your public pages (GET only, nothing is submitted), shows the seven steps, asks three questions about how agents should onboard, and writes one fix prompt per gap for your coding agent (Claude Code, Cursor). It never writes your product's code.
+`check` reads your public pages (GET requests, nothing is submitted to your product), shows the seven steps, asks three questions about how agents should onboard, and writes one fix prompt per gap for your coding agent (Claude Code, Cursor). It never writes your product's code.
 
-After the seven steps it runs the [aeo-ready](https://www.npmjs.com/package/aeo-ready) standards catalog: five third-party benchmarks of your public surface (agentic-seo, Cloudflare's isitagentready, Fern's afdocs, Vercel's agent-readability, AgentGrade), about 125 checks covering llms.txt, robots rules, markdown and content negotiation, MCP server cards, A2A agent cards, x402, UCP, ACP, AP2, Web Bot Auth, rate-limit headers and structured JSON errors. It is free, spawns `npx` for three of the benchmarks, and takes usually 1-3 minutes, up to 15 on a large site (aeo-ready is killed after 15; `AGENT_READY_STANDARDS_TIMEOUT_MS` changes that), so a check takes that much longer than before; `--no-standards` skips it and the seven steps print in seconds. The catalog is theirs, not ours: aeo-ready runs `agentgrade-cli`, `agentic-seo` and `@vercel/agent-readability` unpinned through `npx`, so their checks change when those packages do, and nothing in it changes the seven-step verdict. A benchmark that did not run says why; an aeo-ready failure is printed, never hidden.
+After the seven steps it runs the [aeo-ready](https://www.npmjs.com/package/aeo-ready) standards catalog: five third-party benchmarks of your public surface (agentic-seo, Cloudflare's isitagentready, Fern's afdocs, Vercel's agent-readability, AgentGrade), about 125 checks covering llms.txt, robots rules, markdown and content negotiation, MCP server cards, A2A agent cards, x402, UCP, ACP, AP2, Web Bot Auth, rate-limit headers and structured JSON errors. It is free, spawns `npx` for three of the benchmarks, sends your URL to isitagentready.com (Cloudflare) and AgentGrade's service, and takes usually 1-3 minutes, up to 15 on a large site (aeo-ready is killed after 15; `AGENT_READY_STANDARDS_TIMEOUT_MS` changes that), so a check takes that much longer than before; `--no-standards` skips it and the seven steps print in seconds. The catalog is theirs, not ours: aeo-ready runs `agentgrade-cli`, `agentic-seo` and `@vercel/agent-readability` unpinned through `npx`, so their checks change when those packages do, and nothing in it changes the seven-step verdict. A benchmark that did not run says why; an aeo-ready failure is printed, never hidden.
 
 ```
   Standards  5 third-party benchmarks of your public surface (aeo-ready 1.7.9)
              Their checks and scores; they do not change the seven steps above.
+             Sent your URL to isitagentready.com (Cloudflare) and AgentGrade's
+             service; agentic-seo, Fern and Vercel fetched your pages from here.
     · agentic-seo   no individual checks    score 63/100 C
-    ✓ Cloudflare    6/6 checks passed       score 1/5 F
+    ✗ Cloudflare    4/21 checks passed      level 1/5 F
     ✗ Fern          12/20 checks passed     score 70/100 C
     ✗ Vercel        14/21 checks passed     score 69/100 C
     ✗ AgentGrade    31/65 checks passed     score 74/100 B
@@ -120,9 +122,9 @@ Scores are each benchmark's own (Cloudflare grades a level out of 5, the others 
                   agent can use.
   ✓ Use           164 API operations in a machine-readable API  from your files
                   spec.
-  ✗ Pay           Paid plans are published, but nothing         from page text
-                  documents a way for an agent to buy one, so
-                  a person has to check out.
+  ✗ Pay           Paid plans are published. The pages read      from page text
+                  document no way for an agent to buy one, so
+                  a person may have to check out.
   · Manage        Changing a plan or a limit can only be        needs a test run
                   proven by a test run.
 
@@ -270,6 +272,14 @@ npx @tansohq/agent-ready test --json --yes     # creates a real account on the p
 ## More
 
 `agent-ready execute --task <id>` runs one of the built-in example tasks against its public product with a real agent. It uses your Claude Code with no spending cap and does not ask first; `--mode signup` creates an account on that product. `agent-ready execute --help` lists the tasks. For your own product, use `agent-ready test`.
+
+### Pay with x402
+
+Two of the built-in tasks have the agent pay a product over x402 from its own wallet: `pay-x402-agentmail` (creates one inbox, $2.00, no API key: the payment is the authentication) and `pay-x402-telnyx` (adds $1 of account credit; needs `TELNYX_API_KEY` and an account with the `X402_PAYMENTS_ENABLED` flag). **Real money moves**: USDC on Base, from the wallet whose private key you put in `AGENT_READY_WALLET_KEY`. Use a wallet made for this with a few dollars on it, never your main one. The agent makes exactly one paid request; the evaluator reads the settlement transaction on Base itself (keyless JSON-RPC at mainnet.base.org) and passes only when USDC left that wallet for no more than `AGENT_READY_PAY_CAP_USD` (default 2.00) and the paid request answered 2xx. The key is handed to the agent under another name and redacted from every file the run writes.
+
+```bash
+AGENT_READY_WALLET_KEY=0x… AGENT_READY_PAY_CAP_USD=2 npx @tansohq/agent-ready execute --task pay-x402-agentmail
+```
 
 Source: https://github.com/tansohq/agent-ready-cli. Issues and questions go there. The hosted dashboard at [app.tansohq.com](https://app.tansohq.com) ([docs](https://app.tansohq.com/docs), [agent access](https://app.tansohq.com/auth.md)) runs saved tests on a schedule with email or webhook alerts. A hosted test run is not the same harness as `test`: Tanso's model proposes one action at a time and the runner makes bounded HTTP requests to the product's own hosts. It does not drive browser UI or complete arbitrary signup forms.
 
