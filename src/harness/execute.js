@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from 
 import { join, relative } from "node:path";
 import * as claudePrint from "./executors/claude-print.js";
 import { personaInstructions } from "./persona.js";
-import { secretsInMail } from "./secrets.js";
+import { secretsInMail, secretsInText } from "./secrets.js";
 
 // Executor interface. Any replacement (Agent SDK, another agent) implements:
 //   name: string
@@ -80,22 +80,35 @@ export function sourcesFrom(events) {
 // Symlinks, sockets and the like are not files the agent wrote: headless Chrome leaves SingletonCookie, SingletonLock
 // and SingletonSocket in its profile under .tools/, the first two dangling symlinks, which a stat cannot follow.
 const UNSCRUBBED = new Set(["node_modules", ".git", join(".tools", "cache"), join(".tools", "npm-global"), join(".tools", "pipx"), join(".tools", "venv")]);
-function scrubWorkDir(workDir, redact, scrubbed = [], base = workDir) {
+function filesToScrub(workDir, files = [], base = workDir) {
   for (const entry of readdirSync(workDir, { withFileTypes: true })) {
     const name = entry.name;
     const p = join(workDir, name);
     if (entry.isDirectory()) {
-      if (!UNSCRUBBED.has(name) && !UNSCRUBBED.has(relative(base, p))) scrubWorkDir(p, redact, scrubbed, base);
+      if (!UNSCRUBBED.has(name) && !UNSCRUBBED.has(relative(base, p))) filesToScrub(p, files, base);
       continue;
     }
     if (!entry.isFile()) continue;
     // CREDENTIAL.env is read raw by the evaluator and overwritten by the harness afterwards; never scrub it here.
     if (name === "CREDENTIAL.env" || /\.(png|jpg|gz|zip|bin|mp4|webm)$/i.test(name)) continue;
+    files.push(p);
+  }
+  return files;
+}
+
+// Secrets in the files are learned before any file is scrubbed: a CLI's saved login holds keys the agent never
+// printed (Composio's agent.json had a user key and an agent key next to the project key the agent saved), and a
+// value found in one file may sit in another.
+function scrubWorkDir(workDir, redact, learn) {
+  const files = filesToScrub(workDir);
+  for (const p of files) for (const v of secretsInText(readFileSync(p, "utf8"))) learn(v);
+  const scrubbed = [];
+  for (const p of files) {
     const before = readFileSync(p, "utf8");
     const after = redact(before);
     if (after !== before) {
       writeFileSync(p, after);
-      scrubbed.push(relative(base, p));
+      scrubbed.push(relative(workDir, p));
     }
   }
   return scrubbed;
@@ -144,7 +157,7 @@ export async function execute({ task, runId, doc, workDir, credentials, mode, pe
   const inboxDir = join(workDir, "inbox");
   if (existsSync(inboxDir)) for (const f of readdirSync(inboxDir)) for (const v of secretsInMail(readFileSync(join(inboxDir, f), "utf8"))) credentials.learn(v);
   // trace.jsonl was written live, before the acquired value was known: scrub it again now.
-  const scrubbed = scrubWorkDir(workDir, credentials.redact);
+  const scrubbed = scrubWorkDir(workDir, credentials.redact, credentials.learn);
   for (const e of events) for (const k of ["text", "input"]) if (typeof e[k] === "string") e[k] = credentials.redact(e[k]);
   const readFile = (name) => (existsSync(join(workDir, name)) ? credentials.redact(readFileSync(join(workDir, name), "utf8")) : null);
   const toolUses = events.filter((e) => e.kind === "tool_use");

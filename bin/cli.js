@@ -86,7 +86,7 @@ program
   .option("--fail-on <level>", "exit 1 when a fix at this severity or above is found: high | medium")
   .option("--out <dir>", "run directory (default: .agent-ready/<host>/<runId>)")
   .option("--json", "print audit-report.json to stdout")
-  .option("--no-standards", "skip the aeo-ready standards catalog (five third-party benchmarks; 1-3 minutes, spawns npx)")
+  .option("--no-standards", "skip the aeo-ready standards catalog (five third-party benchmarks; usually 1-3 minutes, up to 15 on a large site; spawns npx)")
   .option("--no-color", "plain output")
   .addHelpText("after", `
 Examples:
@@ -167,7 +167,7 @@ Examples:
     // after it, so audit-report.json carries `standards` too.
     let standardsFile = null;
     if (opts.standards) {
-      if (live) process.stderr.write(`\n  ${style.dim("Running the standards catalog: aeo-ready spawns npx, 1-3 minutes…")}`);
+      if (live) process.stderr.write(`\n  ${style.dim("Running the standards catalog: aeo-ready spawns npx, usually 1-3 minutes, up to 15 on a large site…")}`);
       const { standards, raw } = await runStandards({ url, out });
       if (live) process.stderr.write("\r\x1b[2K");
       audit.standards = standards;

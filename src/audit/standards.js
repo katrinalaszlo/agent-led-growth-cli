@@ -19,13 +19,15 @@ export function aeoReadyVersion() {
   return require("aeo-ready/package.json").version;
 }
 
+// durationMs is the benchmark's own wall-clock time, which aeo-ready reports from 1.8.0; null before that.
 // A benchmark reports each check as pass, ok, fail, warn or skip. aeo-ready's own output counts warn as failed and
 // leaves skip out, so this does the same. agentic-seo reports categories only, so it has no checks to count.
 // The values come from a third-party CLI's JSON and end up in a page, so a score is a finite number or null and a
 // grade or check id is a string.
 const number = (value) => (value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? null : Number(value));
 function shapeBenchmark({ id, name }, b) {
-  if (!b || b.available === false) return { id, name, score: null, maxScore: null, grade: null, passed: 0, total: 0, failed: [], error: b?.reason ? String(b.reason) : "did not run" };
+  const durationMs = number(b?.durationMs);
+  if (!b || b.available === false) return { id, name, score: null, maxScore: null, grade: null, passed: 0, total: 0, failed: [], error: b?.reason ? String(b.reason) : "did not run", durationMs };
   const checks = (b.checks || []).filter((c) => c.status !== "skip");
   return {
     id,
@@ -37,6 +39,7 @@ function shapeBenchmark({ id, name }, b) {
     total: checks.length,
     failed: checks.filter((c) => c.status === "fail" || c.status === "warn").map((c) => String(c.id)),
     error: null,
+    durationMs,
   };
 }
 
@@ -52,11 +55,14 @@ export function shapeStandards({ result, warnings, error }, version) {
 }
 
 // Runs the catalog for url and writes aeo-ready's own JSON to <out>/aeo-ready.json. Spawns npx inside aeo-ready and
-// takes 1-3 minutes. AGENT_READY_AEO_CLI names another aeo-ready CLI script to run instead of the installed one.
+// takes usually 1-3 minutes, up to 15 on a large site; aeo-ready is killed after timeoutMs (runAeoReady's default,
+// or AGENT_READY_STANDARDS_TIMEOUT_MS when set). AGENT_READY_AEO_CLI names another aeo-ready CLI script to run
+// instead of the installed one.
 // Returns the `standards` object and the raw file's path (null when aeo-ready gave no result; its error is in
 // standards.error, never dropped).
 export async function runStandards({ url, out, timeoutMs = undefined, runAeoReady = spawnAeoReady, env = process.env }) {
   mkdirSync(out, { recursive: true });
+  if (!timeoutMs && Number(env.AGENT_READY_STANDARDS_TIMEOUT_MS) > 0) timeoutMs = Number(env.AGENT_READY_STANDARDS_TIMEOUT_MS);
   const r = await runAeoReady({ url, cwd: join(out, "vendor"), cli: env.AGENT_READY_AEO_CLI || null, ...(timeoutMs ? { timeoutMs } : {}) });
   const standards = shapeStandards(r, aeoReadyVersion());
   let raw = null;

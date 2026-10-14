@@ -1,11 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { shapeStandards, runStandards, aeoReadyVersion } from "../src/audit/standards.js";
 import { makeStyle, renderStandards } from "../src/audit/render.js";
-import { AEO_RESULT } from "./standards-fixtures.js";
+import { runAeoReady, STANDARDS_TIMEOUT_MS } from "../src/scan/index.js";
+import { AEO_RESULT, writeFakeAeoCli } from "./standards-fixtures.js";
 
 const plain = makeStyle(false);
 const ran = { result: AEO_RESULT, warnings: ["Warning: history.json not written"], error: null };
@@ -17,7 +18,7 @@ describe("standards: shaping aeo-ready's result", () => {
     assert.equal(s.averageScore, 59);
     assert.deepEqual(s.benchmarks.map((b) => b.id), ["agenticSeo", "cloudflare", "fern", "vercel", "agentgrade"]);
     const fern = s.benchmarks.find((b) => b.id === "fern");
-    assert.deepEqual(fern, { id: "fern", name: "Fern", score: 70, maxScore: 100, grade: "C", passed: 1, total: 3, failed: ["llms-txt-size", "markdown-endpoint"], error: null });
+    assert.deepEqual(fern, { id: "fern", name: "Fern", score: 70, maxScore: 100, grade: "C", passed: 1, total: 3, failed: ["llms-txt-size", "markdown-endpoint"], error: null, durationMs: null });
     const cloudflare = s.benchmarks.find((b) => b.id === "cloudflare");
     assert.deepEqual([cloudflare.score, cloudflare.maxScore, cloudflare.passed, cloudflare.total, cloudflare.failed], [1, 5, 2, 2, []]);
     const seo = s.benchmarks.find((b) => b.id === "agenticSeo");
@@ -38,7 +39,16 @@ describe("standards: shaping aeo-ready's result", () => {
 
   it("a benchmark that did not run keeps aeo-ready's reason", () => {
     const vercel = shapeStandards(ran, "1.7.9").benchmarks.find((b) => b.id === "vercel");
-    assert.deepEqual(vercel, { id: "vercel", name: "Vercel", score: null, maxScore: null, grade: null, passed: 0, total: 0, failed: [], error: "@vercel/agent-readability timed out after 60s" });
+    assert.deepEqual(vercel, { id: "vercel", name: "Vercel", score: null, maxScore: null, grade: null, passed: 0, total: 0, failed: [], error: "@vercel/agent-readability timed out after 60s", durationMs: null });
+  });
+
+  it("durationMs is the benchmark's own, when aeo-ready reports it (1.8.0), null before", () => {
+    const timed = { result: { averageScore: 59, benchmarks: { fern: { ...AEO_RESULT.benchmarks.fern, durationMs: 4139 }, vercel: { available: false, reason: "did not finish within 720s", durationMs: 720004 }, cloudflare: { ...AEO_RESULT.benchmarks.cloudflare, durationMs: "oops" } } }, warnings: [], error: null };
+    const s = shapeStandards(timed, "1.8.0");
+    assert.equal(s.benchmarks.find((b) => b.id === "fern").durationMs, 4139);
+    assert.equal(s.benchmarks.find((b) => b.id === "vercel").durationMs, 720004);
+    assert.equal(s.benchmarks.find((b) => b.id === "cloudflare").durationMs, null);
+    assert.equal(s.benchmarks.find((b) => b.id === "agentgrade").durationMs, null);
   });
 
   it("when aeo-ready gives no JSON, the error is kept and there are no benchmarks", () => {
@@ -70,6 +80,27 @@ describe("standards: terminal section", () => {
   });
 });
 
+describe("standards: runAeoReady", () => {
+  it("kills aeo-ready after timeoutMs and says so, instead of reporting an exit code", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "standards-"));
+    const cli = join(dir, "hang.mjs");
+    writeFileSync(cli, "process.stderr.write('Warning: slow\\n'); setTimeout(() => {}, 60000);\n");
+    const r = await runAeoReady({ url: "https://acme.dev/", cwd: join(dir, "vendor"), cli, timeoutMs: 300 });
+    assert.equal(r.result, null);
+    assert.equal(r.error, "aeo-ready killed after 0 s without JSON: Warning: slow");
+  });
+
+  it("a child that exits with no JSON reports its exit code", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "standards-"));
+    const r = await runAeoReady({ url: "https://acme.dev/", cwd: join(dir, "vendor"), cli: writeFakeAeoCli(dir, "fail"), timeoutMs: 5000 });
+    assert.equal(r.error, "aeo-ready exited 1 without JSON: Warning: no network");
+  });
+
+  it("the default kill is 15 minutes", () => {
+    assert.equal(STANDARDS_TIMEOUT_MS, 900_000);
+  });
+});
+
 describe("standards: runStandards", () => {
   it("runs aeo-ready for the url in the run folder, writes its JSON there and returns the shaped field", async () => {
     const out = join(mkdtempSync(join(tmpdir(), "standards-")), "run");
@@ -80,6 +111,16 @@ describe("standards: runStandards", () => {
     assert.deepEqual(JSON.parse(readFileSync(raw, "utf8")), AEO_RESULT);
     assert.equal(standards.generator.version, aeoReadyVersion());
     assert.equal(standards.benchmarks.length, 5);
+  });
+
+  it("AGENT_READY_STANDARDS_TIMEOUT_MS sets the kill when no timeoutMs is passed; an explicit one wins", async () => {
+    const out = join(mkdtempSync(join(tmpdir(), "standards-")), "run");
+    const calls = [];
+    const fake = async (args) => (calls.push(args.timeoutMs), ran);
+    await runStandards({ url: "https://acme.dev/", out, env: {}, runAeoReady: fake });
+    await runStandards({ url: "https://acme.dev/", out, env: { AGENT_READY_STANDARDS_TIMEOUT_MS: "1200000" }, runAeoReady: fake });
+    await runStandards({ url: "https://acme.dev/", out, env: { AGENT_READY_STANDARDS_TIMEOUT_MS: "1200000" }, timeoutMs: 180_000, runAeoReady: fake });
+    assert.deepEqual(calls, [undefined, 1200000, 180_000]);
   });
 
   it("with no result nothing is written and the error is returned, not thrown away", async () => {

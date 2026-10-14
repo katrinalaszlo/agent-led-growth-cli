@@ -13,13 +13,24 @@ const GENERIC = [
   /\bnpg_[A-Za-z0-9]{8,}/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
   /Bearer\s+[A-Za-z0-9._-]{16,}/g,
+  // Firecrawl's keys (fc- and 32 hex): a run's dashboard listing showed a second key the agent never saved. Not \b
+  // before it: in trace.jsonl a key on its own line follows a literal \n. A hex digit before it is a UUID's …8cfc-4cb5-….
+  /(?<![0-9a-fA-F])fc-[A-Za-z0-9]{20,}\b/g,
+  // Composio's project key (ak_) and user key (uak_).
+  /\buak_[A-Za-z0-9_-]{20,}/g,
+  /\bak_[A-Za-z0-9_-]{16,}/g,
 ];
+// The sandbox's own proxy carries its credential in the URL with no @host (HTTP_PROXY=http://srt.<token>:<secret>),
+// so URL_PASSWORD below does not see it. An agent that prints its environment prints it; one run did.
+const PROXY_URL = /((?:https?|all|grpc)_proxy=[a-z][a-z0-9+.-]*:\/\/)([^\s\\"']{8,})/gi;
 
 // Secrets a product returned to the agent: values of JSON fields whose names say they are secret. Read from each
 // full line of agent output before anything is written, because the agent may never file them in CREDENTIAL.env
 // (it stopped, was stopped, or ignored the instruction) and the event log keeps only the start of each result:
-// with curl -i the headers fill it and the body holding the key is cut off. Quotes may arrive escaped (\").
-const SECRET_FIELD = /\\?"((?:[a-z]+_)*(?:api_?key|key|token|secret|password|claim_?code|claim_?url|verification_code|client_secret)|apiKey|accessToken|refreshToken|claimCode|claimUrl|clientSecret)\\?"\s*:\s*\\?"([^"\\\s]{8,})\\?"/gi;
+// with curl -i the headers fill it and the body holding the key is cut off. Quotes may arrive escaped (\") or as
+// Python's single quotes: a Composio run printed a dict with 'user_api_key': 'uak_…' and the key stayed in the trace.
+// A slash may arrive escaped (\/) in a JSON-encoded URL. "pat" is MotherDuck's token claim in its decoded JWT.
+const SECRET_FIELD = /\\?["']((?:[a-z]+_)*(?:api_?key|key|token|secret|password|pat|jwt|credentials?|claim_?code|claim_?url|verification_code|client_secret)|apiKey|accessToken|refreshToken|claimCode|claimUrl|clientSecret)\\?["']\s*:\s*\\?["']((?:[^"'\\\s]|\\\/){8,})\\?["']/gi;
 // The same for links: a one-time sign-in or claim link carries its secret as a URL parameter (Telnyx's emails had
 // ?token=…, Cosmic's ?token=agk_…). Values shorter than 12 characters are left alone so page numbers survive.
 // Any parameter named like a token counts: Cloudflare's temporary-account claim link is ?claimToken=….
@@ -29,7 +40,10 @@ const SECRET_PARAM = /[?&](\w*token|code|key|claim|otp|signature|sig|auth|magic)
 const URL_PASSWORD = /\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s:/@"'\\]+:)([^\s@"'\\/]{4,})@/gi;
 export function secretsInText(text) {
   const t = String(text ?? "");
-  return [...new Set([...[...t.matchAll(SECRET_FIELD)].map((m) => m[2]), ...[...t.matchAll(SECRET_PARAM)].map((m) => m[2]), ...[...t.matchAll(URL_PASSWORD)].map((m) => m[2])])];
+  const found = [...[...t.matchAll(SECRET_FIELD)].map((m) => m[2]), ...[...t.matchAll(SECRET_PARAM)].map((m) => m[2]), ...[...t.matchAll(URL_PASSWORD)].map((m) => m[2]), ...[...t.matchAll(PROXY_URL)].map((m) => m[2])];
+  // A value read in JSON-escaped form (https:\/\/…) is also a secret in its plain form, as the agent writes it in its notes.
+  for (const v of [...found]) if (v.includes("\\/")) found.push(v.replaceAll("\\/", "/"));
+  return [...new Set(found)];
 }
 
 // Mail adds two kinds a product sends a person: a short code after words like "code" or "OTP" (Cosmic's "Your
@@ -40,6 +54,19 @@ const MAIL_LINK = /https?:\/\/[^\s"'<>\\)\]]{52,}/g;
 export function secretsInMail(text) {
   const t = String(text ?? "");
   return [...new Set([...secretsInText(t), ...[...t.matchAll(MAIL_CODE)].map((m) => m[1]), ...(t.match(MAIL_LINK) || [])])];
+}
+
+// A learned number (a mail code) is replaced only where it stands as a whole number. A Supermemory run had learned
+// a six-digit code and replaced it inside contextWindow's 1000000, leaving "1<redacted>" and a trace line that no
+// longer parsed. A code that is itself a whole JSON number ("estimated_tokens": 837777) is left alone, so the line
+// stays JSON. Any other value is replaced wherever it appears: in trace.jsonl a key on its own line follows a
+// literal \n, so a letter boundary would miss it.
+function redactValue(text, value) {
+  if (!/^\d+$/.test(value)) return text.split(value).join("<redacted>");
+  return text.replace(new RegExp(`(?<![0-9])${value}(?![0-9])`, "g"), (m, offset) => {
+    const isJsonNumber = /"\s*:\s*$/.test(text.slice(Math.max(0, offset - 20), offset)) && /^\s*[,}\]]/.test(text.slice(offset + m.length, offset + m.length + 3));
+    return isJsonNumber ? m : "<redacted>";
+  });
 }
 
 export function resolveCredentials(task, env = process.env) {
@@ -60,13 +87,18 @@ export function resolveCredentials(task, env = process.env) {
   }
   const values = Object.values(injected);
   // Values learned later (a key the agent obtained itself) join the redactor for every write that follows.
+  // A short plain word is not one: Turso's pricing JSON has rows keyed "key": "databases", and learning that word
+  // turned "100 databases" in RESULT.md into "100 <redacted>".
   const learn = (v) => {
-    if (v && !values.includes(v)) values.push(v);
+    if (!v || values.includes(v) || v === "<redacted>") return;
+    if (/^[A-Za-z]+$/.test(v) && v.length < 16) return;
+    values.push(v);
   };
   const redact = (text) => {
     let out = String(text ?? "");
-    for (const v of values) out = out.split(v).join("<redacted>");
+    for (const v of values) out = redactValue(out, v);
     out = out.replace(URL_PASSWORD, "$1<redacted>@");
+    out = out.replace(PROXY_URL, "$1<redacted>");
     // Keep only a type marker (sk_test_, rk_live_, KEY, whisper-, …), never a usable segment of the value.
     for (const re of GENERIC) out = out.replace(re, (m) => (m.match(/^(?:sk|rk|pk|whsec)_(?:test|live)_/) || m.match(/^[A-Za-z]{2,8}[_-]/) || [m.slice(0, 3)])[0] + "…redacted");
     return out;

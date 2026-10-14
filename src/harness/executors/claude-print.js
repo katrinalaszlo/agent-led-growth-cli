@@ -93,6 +93,9 @@ export async function run({ prompt, workDir, childEnv, tools, network, maxTurns,
   let stderr = "";
   let buffer = "";
   let result = null;
+  // Claude prints one result event per segment of a run that it resumed; the turns add up, the cost is cumulative.
+  // A Stripe run's trace held results of 32 and 4 turns and final.json said 4.
+  let turns = null;
   let spawnError = null;
   let timedOut = false;
   const handle = (line) => {
@@ -107,7 +110,10 @@ export async function run({ prompt, workDir, childEnv, tools, network, maxTurns,
       return;
     }
     for (const e of normalize(ev, redact)) {
-      if (e.kind === "result") result = e;
+      if (e.kind === "result") {
+        result = e;
+        if (e.turns !== null) turns = (turns ?? 0) + e.turns;
+      }
       onEvent(e);
     }
   };
@@ -156,7 +162,7 @@ export async function run({ prompt, workDir, childEnv, tools, network, maxTurns,
     finishedAt: new Date().toISOString(),
     exitCode,
     stoppedBecause,
-    turns: result?.turns ?? null,
+    turns,
     costUsd: result?.costUsd ?? null,
     stderr: redact(errText).slice(0, 2000) || null,
     rawTrace: "trace.jsonl",

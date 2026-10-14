@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { reconcile } from "../src/harness/reconcile.js";
 import { buildPrompt, sourcesFrom } from "../src/harness/execute.js";
-import { resolveCredentials } from "../src/harness/secrets.js";
+import { resolveCredentials, secretsInText } from "../src/harness/secrets.js";
 import { settingsFor } from "../src/harness/executors/claude-print.js";
 import { task, evaluate } from "../src/harness/tasks/stripe-subscription.js";
 
@@ -177,5 +177,87 @@ describe("acquired credential survives until the evaluator reads it", () => {
     await execute({ task: { ...task, credentialEnvName: "MOLTBOOK_API_KEY", instructions: task.instructions }, runId: "r1", doc, workDir: dir, credentials: creds, mode: "signup", executorName: "fake" });
     assert.equal(fs.readlinkSync(path.join(profile, "SingletonCookie")), "some-host-12345-67890");
     assert.doesNotMatch(fs.readFileSync(path.join(profile, "Preferences"), "utf8"), /abcdefgh12345/);
+  });
+});
+
+// Each case here is the shape of a leak or a corruption found in the traces of real 0.4.10 runs; the values are invented.
+describe("redaction, from real runs", () => {
+  it("learns a key printed as a Python dict, in single quotes (Composio's user_api_key)", () => {
+    const line = "{'org_id': 'ok_abc', 'api_key': '<redacted>', 'user_api_key': 'uak_Q7v3nX2pL9mR4tY8wZ1aB5cD6eF0gH2jK4lM7nP9qR'}";
+    assert.ok(secretsInText(line).includes("uak_Q7v3nX2pL9mR4tY8wZ1aB5cD6eF0gH2jK4lM7nP9qR"));
+    const creds = resolveCredentials({ credentials: [] }, {});
+    for (const v of secretsInText(line)) creds.learn(v);
+    assert.equal(creds.redact(line), "{'org_id': 'ok_abc', 'api_key': '<redacted>', 'user_api_key': '<redacted>'}");
+  });
+
+  it("redacts a Firecrawl key shown in page text, and leaves fc- inside a UUID alone", () => {
+    const { redact } = resolveCredentials({ credentials: [] }, {});
+    assert.equal(redact("Default\nfc-0a1b2c3d4e5f60718293a4b5c6d7e8f9\nCreated on"), "Default\nfc-…redacted\nCreated on");
+    // The same key as trace.jsonl carries it, after a literal \n.
+    assert.equal(redact(String.raw`{"content":"Default\nfc-0a1b2c3d4e5f60718293a4b5c6d7e8f9\nCreated on"}`), String.raw`{"content":"Default\nfc-…redacted\nCreated on"}`);
+    assert.equal(redact('"uuid":"280bbded-8cfc-4cb5-9c34-e17fae410179"'), '"uuid":"280bbded-8cfc-4cb5-9c34-e17fae410179"');
+  });
+
+  it("redacts the sandbox proxy's credential from an environment dump", () => {
+    const dump = "no_proxy=localhost\nHTTP_PROXY=http://srt.dG9vbHVfMDFDQlY4invented0123456789ABCDEF:a1b2c3d4\nGRPC_PROXY=http://srt.dG9vbHVfMDFDQlY4invented0123456789ABCDEF:a1b2c3d4\n";
+    assert.deepEqual(secretsInText(dump), ["srt.dG9vbHVfMDFDQlY4invented0123456789ABCDEF:a1b2c3d4"]);
+    const { redact, learn } = resolveCredentials({ credentials: [] }, {});
+    assert.equal(redact(dump), "no_proxy=localhost\nHTTP_PROXY=http://<redacted>\nGRPC_PROXY=http://<redacted>\n");
+    for (const v of secretsInText(dump)) learn(v);
+    assert.equal(redact("curl -x http://srt.dG9vbHVfMDFDQlY4invented0123456789ABCDEF:a1b2c3d4 https://x.dev"), "curl -x http://<redacted> https://x.dev");
+  });
+
+  it("learns a token claim from a decoded JWT (MotherDuck's pat)", () => {
+    const claims = String.raw`{"content":"{\n \"email\": \"agent-1@agent.example.com\",\n \"pat\": \"mdp_8f3kL0qW9xZ2vN4bT6yH1cJ5mR7sA0dF2gK4\",\n \"iss\": \"md_pat\"\n}"}`;
+    assert.deepEqual(secretsInText(claims), ["mdp_8f3kL0qW9xZ2vN4bT6yH1cJ5mR7sA0dF2gK4"]);
+  });
+
+  it("learns a JSON-escaped URL in its plain form too", () => {
+    const line = String.raw`{"claim_url":"https:\/\/dash.example.dev\/claim\/k9Lm2nQ4rS6tV8w"}`;
+    assert.deepEqual(secretsInText(line).sort(), [String.raw`https:\/\/dash.example.dev\/claim\/k9Lm2nQ4rS6tV8w`, "https://dash.example.dev/claim/k9Lm2nQ4rS6tV8w"].sort());
+  });
+
+  it("a learned mail code is not replaced inside a longer number, and a JSON line stays JSON", () => {
+    const { redact, learn } = resolveCredentials({ credentials: [] }, {});
+    learn("000000");
+    learn("837777");
+    const line = JSON.stringify({ type: "result", modelUsage: { contextWindow: 1000000, estimated_tokens: 837777 }, result: "Your code is 837777; sent 000000 times" });
+    const out = redact(line);
+    const parsed = JSON.parse(out);
+    assert.equal(parsed.modelUsage.contextWindow, 1000000);
+    assert.equal(parsed.modelUsage.estimated_tokens, 837777, "a whole JSON number is left alone rather than breaking the line");
+    assert.equal(parsed.result, "Your code is <redacted>; sent <redacted> times");
+    assert.equal(redact("Your code: 837777."), "Your code: <redacted>.");
+    // A key is still replaced wherever it stands, including after a literal \n in a JSON-encoded line.
+    learn("ak_Zx9Qw8Er7Ty6Ui5Op4As3Df");
+    assert.equal(redact(String.raw`{"stdout":"key\nak_Zx9Qw8Er7Ty6Ui5Op4As3Df\n"}`), String.raw`{"stdout":"key\n<redacted>\n"}`);
+  });
+
+  it("does not learn a plain word from a field called key (Turso's pricing rows)", () => {
+    const pricing = '{"rows":[{"key":"databases","label":"Databases"},{"key":"developer","name":"Developer"}]}';
+    const { redact, learn } = resolveCredentials({ credentials: [] }, {});
+    for (const v of secretsInText(pricing)) learn(v);
+    learn("<redacted>");
+    assert.equal(redact("Free plan: 100 databases, 5 GB"), "Free plan: 100 databases, 5 GB");
+  });
+
+  it("learns the keys a CLI saved under .tools/home before scrubbing, so files the agent never printed are scrubbed too", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { execute, EXECUTORS } = await import("../src/harness/execute.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ar-scrub-"));
+    const home = path.join(dir, ".tools", "home", ".acme");
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(path.join(home, "agent.json"), JSON.stringify({ composio: { api_key: "ak_saved0123456789abcdef", user_api_key: "uak_never0123456789printedABCDEF" }, agent_key: "acme_agent_Zx9Qw8Er7Ty6Ui5Op4As3Df" }));
+    fs.writeFileSync(path.join(dir, ".tools", "provision-meta.json"), JSON.stringify({ merchant_token: "mt_Lk3Jh5Gf7Ds9Ap1Oi2Uy4Tr6Ew8", country: "US" }));
+    fs.writeFileSync(path.join(dir, "notes.md"), "agent key acme_agent_Zx9Qw8Er7Ty6Ui5Op4As3Df; merchant mt_Lk3Jh5Gf7Ds9Ap1Oi2Uy4Tr6Ew8\n");
+    fs.writeFileSync(path.join(dir, "CREDENTIAL.env"), "AGENT_READY_KEY=ak_saved0123456789abcdef\n");
+    const creds = resolveCredentials(task, {});
+    EXECUTORS.fake = { name: "fake", run: async () => ({ executor: { name: "fake" }, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), exitCode: 0, stoppedBecause: "success", turns: 0, costUsd: 0, stderr: null, rawTrace: null }) };
+    const summary = await execute({ task: { ...task, credentialEnvName: "AGENT_READY_KEY", instructions: task.instructions }, runId: "r1", doc, workDir: dir, credentials: creds, mode: "signup", executorName: "fake" });
+    for (const f of [path.join(home, "agent.json"), path.join(dir, ".tools", "provision-meta.json"), path.join(dir, "notes.md")]) assert.doesNotMatch(fs.readFileSync(f, "utf8"), /never0123456789printed|Zx9Qw8Er7Ty6|Lk3Jh5Gf7Ds9|saved0123456789/, f);
+    assert.match(fs.readFileSync(path.join(dir, ".tools", "provision-meta.json"), "utf8"), /"country":"US"/);
+    assert.deepEqual(summary.credentials.scrubbedFiles.sort(), [".tools/home/.acme/agent.json", ".tools/provision-meta.json", "notes.md"]);
   });
 });

@@ -5,7 +5,7 @@ description: "Check whether an AI agent can find, sign up for, get a key to, use
 
 # agent-ready check
 
-`npx @tansohq/agent-ready check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part spawns `npx` and takes 1-3 minutes; `--no-standards` skips it when the developer wants only the seven steps, fast.
+`npx @tansohq/agent-ready check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part spawns `npx` and takes usually 1-3 minutes, up to 15 on a large site; `--no-standards` skips it when the developer wants only the seven steps, fast.
 
 ## If the developer asks for a test
 

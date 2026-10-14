@@ -8,8 +8,11 @@ import { runId as newRunId } from "../schema/ids.js";
 const require = createRequire(import.meta.url);
 
 // aeo-ready writes .aeo-ready/history.json into process.cwd() and warns on stderr, so it runs as a child
-// with cwd pinned inside our output directory and stderr captured into the scan record.
-export function runAeoReady({ url, dir, cwd, timeoutMs = 300000, cli = null }) {
+// with cwd pinned inside our output directory and stderr captured into the scan record. A large site takes it
+// minutes (airbyte.com: 11), so the default kill is 15; aeo-ready's own per-benchmark deadline is 12.
+export const STANDARDS_TIMEOUT_MS = 900_000;
+
+export function runAeoReady({ url, dir, cwd, timeoutMs = STANDARDS_TIMEOUT_MS, cli = null }) {
   if (!cli) cli = join(dirname(require.resolve("aeo-ready/package.json")), "bin", "cli.js");
   mkdirSync(cwd, { recursive: true });
   const args = [cli, "scan", url, "--json"];
@@ -18,14 +21,21 @@ export function runAeoReady({ url, dir, cwd, timeoutMs = 300000, cli = null }) {
     const child = spawn(process.execPath, args, { cwd, env: { ...process.env, FORCE_COLOR: "0" }, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    let killed = false;
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));
-    child.on("close", (code) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timer);
       const warnings = stderr.split("\n").map((l) => l.trim()).filter(Boolean);
       const start = stdout.indexOf("{");
-      if (start === -1) return resolve({ result: null, warnings, error: `aeo-ready exited ${code} without JSON${stderr ? `: ${warnings.slice(-1)[0]}` : ""}` });
+      if (start === -1) {
+        const how = killed ? `killed after ${Math.round(timeoutMs / 1000)} s` : code === null ? `killed by ${signal}` : `exited ${code}`;
+        return resolve({ result: null, warnings, error: `aeo-ready ${how} without JSON${stderr ? `: ${warnings.slice(-1)[0]}` : ""}` });
+      }
       try {
         resolve({ result: JSON.parse(stdout.slice(start)), warnings, error: null });
       } catch (err) {
@@ -45,7 +55,7 @@ export async function scan({ url, dir = null, catalogSlug = null, aeo = true, ve
   let aeoWarnings = [];
   let aeoError = null;
   if (aeo && url) {
-    log({ id: "aeo-ready", status: "run", detail: "running agentic-seo · Cloudflare · Fern · Vercel · AgentGrade (this spawns npx, 1-3 min)" });
+    log({ id: "aeo-ready", status: "run", detail: "running agentic-seo · Cloudflare · Fern · Vercel · AgentGrade (this spawns npx, usually 1-3 min, up to 15 on a large site)" });
     const r = await runAeoReady({ url, dir, cwd: vendorDir });
     aeoResult = r.result;
     aeoWarnings = r.warnings;

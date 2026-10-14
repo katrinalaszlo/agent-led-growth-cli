@@ -67,4 +67,4 @@ The JSON is `agent-ready/verify@1`. Report `outcome`, `reason`, each entry in `c
 | `3` | `inconclusive` | Not a result about the product: server errors, a call that answers without a key, the agent could not connect, the spending cap, or a run that did not finish. Say why and suggest what to change. |
 | `130` | | Cancelled. |
 
-The run folder holds the agent's trace and notes. Keys, claim codes, connection-string passwords and one-time codes and links are scrubbed from every file. The agent may use only its test identity's email address; a hook refuses commands, requests and files that carry any other.
+The run folder holds the agent's trace and notes. Keys (the agent's, and any a product showed or a CLI saved), claim codes, connection-string passwords, the sandbox proxy's credential and one-time codes and links are scrubbed from every file. The agent may use only its test identity's email address; a hook refuses commands, requests and files that carry any other.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.12 (2026-10-14)
+
+- `test` scrubs more of what an audit of real runs found left in the run folder. A key a product printed as a Python dict (`'user_api_key': 'uak_…'`), a token claim in a decoded JWT (`"pat"`), a second Firecrawl key (`fc-…`) shown in page text, and the sandbox proxy's credential (`HTTP_PROXY=http://srt.…`) in an environment dump are now redacted. Keys a CLI saved under `.tools/home` that the agent never printed (Composio's agent.json held a user key and an agent key next to the project key) are learned from the files before the scrub, so they are gone from every file.
+- `test` no longer corrupts numbers or JSON while redacting. A learned value is replaced only where it stands as a whole token: a six-digit mail code had been replaced inside a token count (`1000000` became `1<redacted>`, and that trace line stopped parsing), and the word `databases`, learned from a pricing JSON's `"key"` fields, had turned Turso's "100 databases" into "100 <redacted>". Short plain words are no longer learned, and a value that is a whole JSON number is left alone.
+- `test` reports every turn of a run. Claude Code prints one result event per segment when it resumes; `turns` in `final.json` and on the terminal counted only the last segment (a 36-turn Stripe run said 4, a 46-turn monday run said 5). It now adds them up; the cost was already cumulative.
+- `check` gives the aeo-ready catalog 15 minutes before killing it, not 5: airbyte.com, motherduck.com, clickhouse.com and duckdb.org take longer than 5 and lost all five benchmarks in the first leaderboard run. `AGENT_READY_STANDARDS_TIMEOUT_MS` sets another limit. When the catalog is killed, `standards.error` says `aeo-ready killed after 900 s without JSON`; it said `exited ... without JSON` whatever the cause. The in-process leaderboard sweep keeps its 180 seconds.
+- `standards.benchmarks[]` in `agent-ready/audit-report@1` gains `durationMs`, the benchmark's own wall-clock time as aeo-ready 1.8.0 reports it; null from an older aeo-ready. Added at the end of each benchmark; nothing else in the document changes.
+- The README says that many checks run in parallel can exhaust local ports, because the catalog fetches a site's whole sitemap at once, and to run them one at a time or with `--no-standards` and one catalog pass later.
+
 ## 0.4.11 (2026-10-14)
 
 - `test` no longer stops with `ENOENT ... stat ... SingletonCookie` after the agent ran headless Chrome. The scrub that redacts secrets from files the agent wrote walked the work folder with `stat`, which fails on the dangling `SingletonCookie` and `SingletonLock` symlinks Chrome leaves in its profile under `.tools/`; it now reads entry types from the directory and scrubs regular files only, stepping over symlinks and sockets.
