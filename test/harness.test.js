@@ -161,4 +161,21 @@ describe("acquired credential survives until the evaluator reads it", () => {
     assert.doesNotMatch(fs.readFileSync(path.join(dir, "notes.md"), "utf8"), /abcdefgh12345/);
     assert.doesNotMatch(fs.readFileSync(path.join(dir, "execution.json"), "utf8"), /abcdefgh12345/);
   });
+
+  it("scrubWorkDir steps over a dangling symlink headless Chrome left in .tools", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { execute, EXECUTORS } = await import("../src/harness/execute.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ar-scrub-"));
+    const profile = path.join(dir, ".tools", "chrome-profile");
+    fs.mkdirSync(profile, { recursive: true });
+    fs.symlinkSync("some-host-12345-67890", path.join(profile, "SingletonCookie"));
+    fs.writeFileSync(path.join(profile, "Preferences"), "key is moltbook_abcdefgh12345\n");
+    const creds = resolveCredentials(task, {});
+    EXECUTORS.fake = { name: "fake", run: async () => ({ executor: { name: "fake" }, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), exitCode: 0, stoppedBecause: "success", turns: 0, costUsd: 0, stderr: null, rawTrace: null }) };
+    await execute({ task: { ...task, credentialEnvName: "MOLTBOOK_API_KEY", instructions: task.instructions }, runId: "r1", doc, workDir: dir, credentials: creds, mode: "signup", executorName: "fake" });
+    assert.equal(fs.readlinkSync(path.join(profile, "SingletonCookie")), "some-host-12345-67890");
+    assert.doesNotMatch(fs.readFileSync(path.join(profile, "Preferences"), "utf8"), /abcdefgh12345/);
+  });
 });

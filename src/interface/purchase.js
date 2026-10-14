@@ -1,5 +1,5 @@
 import { htmlToText, registrableDomain, sameSite } from "./sources.js";
-import { AGENT_FACING, DOMAIN_ACTORS, PROTOCOL_DESCRIPTION, SELLER, paysElsewhere, quoteAround, sentenceAround } from "./onboarding.js";
+import { AGENT_FACING, DOMAIN_ACTORS, PROTOCOL_DESCRIPTION, PROTOCOL_SITES, SELLER, paysElsewhere, quoteAround, sentenceAround } from "./onboarding.js";
 
 // Whether the product's own pages document a way for an agent to buy from it through an API, and whether a person
 // approves first. Rules over page text, like the onboarding signals: each rule is a named pattern, every hit carries
@@ -50,6 +50,45 @@ const URL_HOST = /https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi;
 const BUYS_ELSEWHERE = /\b(?:from|on|in|at) your (?:store|shop|site|website|app|business|platform|product|catalog|checkout)\b|\b(?:merchants?|sellers?)\b/i;
 // "does not authorize a purchase", "An agent cannot ... approve on its own": the sentence says it is not a way to buy.
 const NOT_A_PURCHASE = /\b(?:not|never|no|cannot|can't)\b[^.]{0,40}\b(?:buy|purchase|pay)\b/i;
+// A checkout an agent completes over an agent-commerce protocol, on the product's own API. ACP (OpenAI and Stripe's
+// Agentic Commerce Protocol) has the merchant implement POST /checkout_sessions, POST /checkout_sessions/{id}/complete
+// and three more; UCP (Google's Universal Commerce Protocol) names its REST checkout /checkout-sessions and has the
+// business publish a profile at /.well-known/ucp; AP2 (Google's Agent Payments Protocol) defines no endpoint of its
+// own, only mandates, so it is found through the agent-buying and mandate wording above, which records the protocol.
+// A checkout is a purchase, not a request paid for in itself, so the wording never says "pays per request".
+const CHECKOUT_PROTOCOL = /\bAgentic Commerce Protocol\b|\bACP\b|\bAgent Payments? Protocol\b|\bAP2\b|\bUniversal Commerce Protocol\b|\bUCP\b/g;
+// A bare acronym is also other things (ACP is IBM's Agent Communication Protocol and Zed's Agent Client Protocol), so
+// it counts only on a page that spells the name out or uses the protocol's own tokens.
+const ACRONYM_SPELLED = {
+  ACP: /\bAgentic Commerce Protocol\b|\bagenticcommerce\.dev\b|\bcheckout_sessions\b/i,
+  AP2: /\bAgent Payments? Protocol\b|\bap2-protocol\.org\b|\bPayment Mandates?\b/i,
+  UCP: /\bUniversal Commerce Protocol\b|\bucp\.dev\b|\bdev\.ucp\.|\/\.well-known\/ucp\b/i,
+};
+const CHECKOUT_CALL_PATH = /\/checkout[_-]sessions?(?:\/|$)/i;
+// A vendor selling the protocol to merchants: a PSP's delegated payment endpoint (OpenAI -> PSP, never the merchant's),
+// payment providers, storefronts, and the reader's own endpoints ("your /checkout_sessions endpoint").
+const CHECKOUT_VENDOR = /\bdelegate_payment\b|\bPSPs?\b|\bpayment (?:service )?providers?\b|\bstorefronts?\b|\byour (?:own )?(?:checkout_sessions|checkout-sessions|endpoints?|API|integration|implementation)\b/i;
+const CHECKOUT_PROTOCOL_DESCRIPTION = /\b(?:ACP|AP2|UCP|Agentic Commerce Protocol|Agent Payments? Protocol|Universal Commerce Protocol)\b[^.]{0,40}?\bis (?:a|an|the)\b[^.]{0,80}?\b(?:standard|protocol)\b/i;
+// The served profile is JSON with a top-level "ucp" member (ucp.dev: "A profile document is a JSON object with a
+// required ucp member"). A site that answers every path with its HTML app is not one, and a "ucp" key nested in
+// some other document is not a profile.
+function isUcpProfile(text) {
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  return Boolean(doc) && typeof doc === "object" && !Array.isArray(doc) && Boolean(doc.ucp) && typeof doc.ucp === "object";
+}
+// The protocol a sentence names, for the funnel's wording.
+const PROTOCOL_NAMES = [
+  ["x402", /\bx402\b/],
+  ["MPP", /\bMPP\b/],
+  ["ACP", /\bAgentic Commerce Protocol\b|\bACP\b/],
+  ["AP2", /\bAgent Payments? Protocol\b|\bAP2\b/],
+  ["UCP", /\bUniversal Commerce Protocol\b|\bUCP\b/],
+];
 const EVIDENCE_MAX = 3;
 const MAX_TRIED = 200;
 
@@ -58,7 +97,7 @@ const MAX_TRIED = 200;
 function namesOtherSite(sentence, ownDomain) {
   return [...sentence.matchAll(URL_HOST)].some((m) => {
     const domain = registrableDomain(m[1].toLowerCase());
-    return domain !== ownDomain && domain !== "x402.org" && domain !== "mpp.dev";
+    return domain !== ownDomain && !PROTOCOL_SITES.has(domain);
   });
 }
 
@@ -81,6 +120,34 @@ function paidCall(raw) {
     if (score && (!best || score > best.score)) best = { ...c, path, score };
   }
   return best;
+}
+
+// The protocol a sentence names. A bare ACP, AP2 or UCP counts only when the page spells it out (ACRONYM_SPELLED),
+// so a page about Zed's Agent Client Protocol never names ACP as the way an agent pays.
+function protocolIn(sentence, page = sentence) {
+  const name = PROTOCOL_NAMES.find(([, re]) => re.test(sentence))?.[0] || null;
+  if (name && ACRONYM_SPELLED[name] && !ACRONYM_SPELLED[name].test(page)) return null;
+  return name;
+}
+
+// The sentence around a match, or the section under it when the match is on a markdown heading line ("## Paid
+// endpoints (x402 or MPP)", "## Checkout (ACP)"): the calls are in the text under the heading.
+function around(text, m) {
+  const lineStart = text.lastIndexOf("\n", m.index) + 1;
+  const line = text.slice(lineStart, (text.indexOf("\n", m.index) + 1 || text.length + 1) - 1);
+  return /^#{1,6}[ \t]/.test(line) ? section(text, lineStart) : sentenceAround(text, m.index, m.index + m[0].length);
+}
+
+// A checkout session call in a raw sentence, on the product's own API: ACP's "POST /checkout_sessions", UCP's
+// "POST https://api.acme.dev/api/v2/checkout-sessions", an OpenAPI key "/checkout_sessions":{"post". Other hosts are
+// caught by namesOtherSite on the sentence.
+function checkoutCall(raw) {
+  const calls = [...[...raw.matchAll(TEXT_CALL)].map((m) => ({ at: m.index, url: m[1], text: m[0] })), ...[...raw.matchAll(JSON_CALL)].map((m) => ({ at: m.index, url: m[1], text: m[0] }))];
+  for (const c of calls) {
+    const path = c.url.replace(/^https?:\/\/[^/]+/, "").replace(/[.:,;]+$/, "");
+    if (CHECKOUT_CALL_PATH.test(path)) return { ...c, path };
+  }
+  return null;
 }
 
 // A heading line and the text under it, up to the next heading or SECTION_MAX characters.
@@ -115,10 +182,7 @@ const RULES = {
   pay_per_request_own_api: (text, ownDomain) => {
     let best = null;
     for (const m of take(text, PROTOCOL)) {
-      // On a markdown heading line ("## Paid endpoints (x402 or MPP)"), the calls are in the section under it.
-      const lineStart = text.lastIndexOf("\n", m.index) + 1;
-      const line = text.slice(lineStart, (text.indexOf("\n", m.index) + 1 || text.length + 1) - 1);
-      const raw = /^#{1,6}[ \t]/.test(line) ? section(text, lineStart) : sentenceAround(text, m.index, m.index + m[0].length);
+      const raw = around(text, m);
       const sentence = raw.replace(/\s+/g, " ");
       if (aboutSomethingElse(sentence, ownDomain) || PROTOCOL_DESCRIPTION.test(sentence) || SELLER_SAMPLE.test(sentence)) continue;
       const call = paidCall(raw);
@@ -128,6 +192,22 @@ const RULES = {
       if (best.score === 4) break;
     }
     return best;
+  },
+  // ACP or UCP next to a checkout session call on the product's own API. The merchant's checkout endpoints are the
+  // product's own; a vendor's page about its merchants' endpoints is not.
+  checkout_protocol_own_api: (text, ownDomain) => {
+    for (const m of take(text, CHECKOUT_PROTOCOL)) {
+      const spelled = ACRONYM_SPELLED[m[0]];
+      if (spelled && !spelled.test(text)) continue;
+      const raw = around(text, m);
+      const sentence = raw.replace(/\s+/g, " ");
+      if (aboutSomethingElse(sentence, ownDomain) || CHECKOUT_PROTOCOL_DESCRIPTION.test(sentence) || CHECKOUT_VENDOR.test(sentence) || NOT_A_PURCHASE.test(sentence)) continue;
+      const call = checkoutCall(raw);
+      if (!call) continue;
+      const start = text.indexOf(raw, Math.max(0, m.index - raw.length));
+      return { index: start >= 0 ? start + call.at : m.index, sentence, call: `${/^get\b/i.test(call.text) || /"get"/i.test(call.text) ? "GET" : "POST"} ${call.path}`, score: 3, protocol: protocolIn(sentence, text) };
+    }
+    return null;
   },
 };
 
@@ -146,8 +226,9 @@ function* take(text, re) {
   }
 }
 
-// { rule, rules, approval, call, evidence: [{ obs, quote }] } or null. call is the purchase or paid call an agent makes,
-// when a quoted sentence names one. approval: "once" when a person sets payment up first near any hit (an approval
+// { rule, rules, approval, call, protocol, evidence: [{ obs, quote }] } or null. call is the purchase or paid call an
+// agent makes, when a quoted sentence names one; protocol is the one the quoted sentence names (x402, MPP, ACP, AP2,
+// UCP), when it names one. approval: "once" when a person sets payment up first near any hit (an approval
 // link, a cap a person sets, a mandate, a delegation, a saved card), else "none_documented".
 export function detectAgentPurchase(doc, bodies) {
   const ownDomain = registrableDomain(new URL(doc.target.url).hostname);
@@ -156,19 +237,24 @@ export function detectAgentPurchase(doc, bodies) {
     const body = bodies.get(obs.id);
     if (!body || !obs.ok || !sameSite(obs.url, doc.target.url) || obs.role === "sitemap") continue;
     const text = body.html ? htmlToText(body.text) : body.text;
+    // The product publishes its UCP business profile: the product saying agents can check out with it over UCP.
+    if (obs.role === "ucp_profile") {
+      if (isUcpProfile(text)) hits.push({ rule: "checkout_protocol_own_api", obs: obs.id, quote: quoteAround(text, 0), approval: false, call: null, score: 2, protocol: "UCP", agentFacing: true });
+      continue;
+    }
     const sellerPage = SELLER_PAGE.test(new URL(obs.url).pathname);
     for (const [rule, find] of Object.entries(RULES)) {
-      if (rule === "pay_per_request_own_api" && (sellerPage || PROXY_PAGE.test(text))) continue;
+      if ((rule === "pay_per_request_own_api" || rule === "checkout_protocol_own_api") && (sellerPage || PROXY_PAGE.test(text))) continue;
       if (hits.filter((h) => h.rule === rule).length >= EVIDENCE_MAX) continue;
       const hit = find(text, ownDomain);
       if (!hit) continue;
       const near = text.slice(Math.max(0, hit.index - APPROVAL_WINDOW), hit.index + APPROVAL_WINDOW);
-      hits.push({ rule, obs: obs.id, quote: quoteAround(text, hit.index), approval: Boolean(hit.approved) || APPROVAL.test(hit.sentence) || APPROVAL.test(near), call: hit.call, score: hit.score, agentFacing: AGENT_FACING.has(obs.role) });
+      hits.push({ rule, obs: obs.id, quote: quoteAround(text, hit.index), approval: Boolean(hit.approved) || APPROVAL.test(hit.sentence) || APPROVAL.test(near), call: hit.call, score: hit.score, protocol: hit.protocol || protocolIn(hit.sentence, text), agentFacing: AGENT_FACING.has(obs.role) });
     }
   }
   if (!hits.length) return null;
   // An agent buying through the API is the strongest claim; 402 with approval alone still says how a purchase goes.
-  const order = ["agent_buys_through_api", "payment_required_approval", "pay_per_request_own_api"];
+  const order = ["agent_buys_through_api", "payment_required_approval", "pay_per_request_own_api", "checkout_protocol_own_api"];
   const rule = order.find((r) => hits.some((h) => h.rule === r));
   // The strongest call first, then quotes from pages written for agents.
   const ordered = [...hits].sort((a, b) => b.score - a.score || Number(b.agentFacing) - Number(a.agentFacing));
@@ -178,6 +264,7 @@ export function detectAgentPurchase(doc, bodies) {
     rules: [...new Set(hits.map((h) => h.rule))],
     approval: hits.some((h) => h.approval) ? "once" : "none_documented",
     call: ruled.find((h) => h.call)?.call || null,
+    protocol: ruled.find((h) => h.protocol)?.protocol || null,
     evidence: ordered.filter((h) => h.rule === rule).concat(ordered.filter((h) => h.rule !== rule)).slice(0, EVIDENCE_MAX * 2).map(({ obs, quote }) => ({ obs, quote })),
   };
 }

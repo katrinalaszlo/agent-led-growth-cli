@@ -76,3 +76,36 @@ export function renderSummary(audit, paths, style, relative, savedTo) {
   out.push("", `  ${style.dim(`Folder  ${relative(paths.folder)}/`)}`, `  ${style.dim(`        ${audit.findings.length ? "prompts/ for the fixes · " : ""}brief.md for security, legal, billing`)}`, "");
   return out;
 }
+
+// The aeo-ready catalog: one line per benchmark, then the failed checks by benchmark, name only. Their scores are
+// the benchmarks' own (Cloudflare grades a level out of 5, the others out of 100); the seven steps above are not
+// changed by any of it. standards: the audit's `standards` field, or null when --no-standards skipped it.
+export function renderStandards(standards, style) {
+  if (!standards) return [`  ${style.bold("Standards")}  skipped (--no-standards)`, ""];
+  const head = `  ${style.bold("Standards")}  `;
+  if (!standards.benchmarks.length) return [`${head}${style.red("aeo-ready did not run.")} ${standards.error}`, ""];
+  const out = [
+    `${head}${standards.benchmarks.length} third-party benchmarks of your public surface ${style.dim(`(aeo-ready ${standards.generator.version})`)}`,
+    `             Their checks and scores; they do not change the seven steps above.`,
+  ];
+  for (const b of standards.benchmarks) {
+    const name = b.name.padEnd(12);
+    if (b.error) {
+      out.push(`    ${style.dim("·")} ${name}  ${style.red("did not run:")} ${b.error}`);
+      continue;
+    }
+    const score = `${b.score}/${b.maxScore}${b.grade ? ` ${b.grade}` : ""}`;
+    const counts = b.total ? `${b.passed}/${b.total} checks passed` : "no individual checks";
+    const mark = !b.total ? style.dim("·") : b.failed.length ? style.red("✗") : style.green("✓");
+    out.push(`    ${mark} ${name}  ${counts.padEnd(22)}  ${style.dim(`score ${score}`)}`);
+  }
+  const failing = standards.benchmarks.filter((b) => b.failed.length);
+  if (failing.length) out.push("", `  ${style.bold("Failed checks")}  ${style.dim("names as each benchmark reports them")}`);
+  for (const b of failing) {
+    out.push(`    ${style.bold(b.name)}`);
+    for (const name of b.failed) out.push(`      ${style.red("✗")} ${name}`);
+  }
+  if (standards.error) out.push("", `  ${style.red("aeo-ready:")} ${standards.error}`);
+  out.push("");
+  return out;
+}

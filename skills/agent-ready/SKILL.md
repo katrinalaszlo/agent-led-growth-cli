@@ -5,7 +5,7 @@ description: "Check whether an AI agent can find, sign up for, get a key to, use
 
 # agent-ready check
 
-`npx @tansohq/agent-ready check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product.
+`npx @tansohq/agent-ready check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part spawns `npx` and takes 1-3 minutes; `--no-standards` skips it when the developer wants only the seven steps, fast.
 
 ## If the developer asks for a test
 
@@ -19,6 +19,7 @@ npx @tansohq/agent-ready check <url> --json --yes
 
 - Needs Node 20.9 or later. The first `npx` run downloads the package.
 - `--json` prints one JSON document (`agent-ready/audit-report@1`) to stdout. Read `headline`, `steps` (each has `name`, `state`, `basis` and `reason`), `findings` (each has `step`, `title`, `severity` and `reason`) and `files`.
+- `standards` (absent with `--no-standards`) is the aeo-ready catalog: `benchmarks` (each has `name`, `score`, `maxScore`, `grade`, `passed`, `total`, `failed` with the failed checks' names, and `error` when that benchmark did not run) and a top-level `error` when aeo-ready itself did not run. These are the benchmarks' own checks and scores; they never change `headline`, `steps` or `findings`. aeo-ready runs `agentgrade-cli` and two other tools unpinned through `npx`, so the catalog changes when they do.
 - `--yes` accepts the defaults for three questions about how agents should onboard, and writes them to `agent-ready.yml` in the current directory if that file does not exist. It never overwrites one.
 - Exit codes: `0` done, `1` a fix at or above `--fail-on` was found, `2` usage error, `3` the site did not answer. Errors print `agent-ready/error@1` as `{ error: { code, message, hint } }`; tell the developer the message and the hint.
 
@@ -41,8 +42,9 @@ The fix prompts build toward the chosen model. Say which answers you used and th
 1. Lead with `headline` ("Your public pages document N of 7 steps. No step has been tested yet: a test runs a real agent."). `documented` and `verified` hold the two counts; a check never verifies, so `verified` is 0.
 2. List each finding: its step, its title and its reason.
 3. Never call a step verified or confirmed: a check only reads pages. Say how each step was found (`basis`): `observed` comes from a structured file or an HTTP status, `heuristic` from matching page text (it can be wrong), and `not_checked` means public pages cannot show it. Only a test with a real agent shows a step works. `state`: `agent_can`/`agent_did` pass, `handoff` passes with one person step, `needs_person`/`blocked` are gaps, `not_checked` needs a test.
-4. Give the paths in `files`: `files.prompts` (one fix prompt per finding), `files.brief` (a one-page brief for security, legal and billing) and `files.config`.
-5. Then tell the developer the next step is a test, and offer the free plan: `npx @tansohq/agent-ready test --check --json`. Do not run `test` itself; see 'If the developer asks for a test'.
+4. After the findings, summarize `standards` in a few lines: each benchmark's passed/total and score, then the failed check names the developer asks about. Say they are third-party benchmarks and separate from the seven steps. If `standards.error` is set, tell the developer aeo-ready did not run and quote it.
+5. Give the paths in `files`: `files.prompts` (one fix prompt per finding), `files.brief` (a one-page brief for security, legal and billing), `files.config` and `files.standards` (aeo-ready's full output).
+6. Then tell the developer the next step is a test, and offer the free plan: `npx @tansohq/agent-ready test --check --json`. Do not run `test` itself; see 'If the developer asks for a test'.
 
 ## Fix a gap
 
@@ -57,6 +59,7 @@ Only when the developer asks: read the prompt file in `files.prompts`, make the 
 
 ## Hosted runs and buying
 
-- On a hosted workspace at app.tansohq.com you may check usage (`GET /v1/account`, `billing.usage`), cancel a purchase still waiting for approval (`POST /v1/purchases/:id/cancel`), pause buying (`POST /v1/billing/pause`) or lower the cap (`POST /v1/billing/cap`).
+- On a hosted workspace at app.tansohq.com you may check usage (`GET /v1/account`, `billing.usage`), cancel a purchase still waiting for approval (`POST /v1/purchases/:id/cancel`), pause buying (`POST /v1/billing/pause` with `{ "paused": true }`) or lower the cap (`POST /v1/billing/cap` with `{ "capCents": 1000 }`). Changing anything needs a key with run or write scope (read-only keys can view usage and list purchases). Keys and agent sessions together can cancel up to 10 purchases a workspace a UTC day; the owner's cancels don't count.
+- A 402 with `approval_url: null` means a purchase already waits and you were given its link earlier; if it is lost, `POST /v1/purchases/:id/approval-link` returns a new one (at most 5 per purchase, `429 approval_link_limit`).
 - Leave unpausing, raising the cap, approving and paying to the person; they answer an agent `403 person_required`.
 - Routes and limits: https://app.tansohq.com/auth.md, section "Manage your workspace".

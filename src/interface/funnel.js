@@ -135,12 +135,17 @@ function pay(doc) {
   const purchase = doc.pricing?.agentPurchase;
   const purchaseRefs = (purchase?.evidence || []).map((e) => e.obs);
   const perRequestCall = purchase?.rule === "pay_per_request_own_api";
+  const checkoutCall = purchase?.rule === "checkout_protocol_own_api";
+  const call = purchase?.call ? ` (${purchase.call})` : "";
+  const over = purchase?.protocol ? ` over ${purchase.protocol}` : "";
   if (purchase?.approval === "once") {
-    const how = perRequestCall ? `pays over x402 or MPP${purchase.call ? ` (${purchase.call})` : ""}` : purchase.call ? `buys through ${purchase.call}` : "buys through the API";
+    const how = perRequestCall ? `pays over ${purchase.protocol || "x402 or MPP"}${call}` : checkoutCall ? `checks out over ${purchase.protocol}${call}` : purchase.call ? `buys through ${purchase.call}${over}` : `buys through the API${over}`;
     return step("pay", "handoff", `A person sets payment up once (an approval link, a spending cap, a saved card or a delegation), then the agent ${how}, with no browser checkout. The docs say so; a test shows whether it works.`, purchaseRefs);
   }
-  if (purchase?.rule === "agent_buys_through_api") return step("pay", "agent_can", `The docs describe an agent buying through the API${purchase.call ? ` (${purchase.call})` : ""}, and no person approving first. A test shows whether it works.`, purchaseRefs);
-  if (perRequestCall) return step("pay", "agent_can", `The docs show a paid call over x402 or MPP on the product's own API${purchase.call ? ` (${purchase.call})` : ""}, with no browser checkout. The agent needs a funded wallet; a test shows whether the payment goes through.`, purchaseRefs);
+  if (purchase?.rule === "agent_buys_through_api") return step("pay", "agent_can", `The docs describe an agent buying through the API${call}${over}, and no person approving first. A test shows whether it works.`, purchaseRefs);
+  if (perRequestCall) return step("pay", "agent_can", `The docs show a paid call over ${purchase.protocol || "x402 or MPP"} on the product's own API${call}, with no browser checkout. The agent needs a funded wallet; a test shows whether the payment goes through.`, purchaseRefs);
+  if (checkoutCall && purchase.call) return step("pay", "agent_can", `The docs show a checkout an agent completes over ${purchase.protocol} on the product's own API${call}, with no browser checkout. A test shows whether a purchase goes through.`, purchaseRefs);
+  if (checkoutCall) return step("pay", "agent_can", `The product publishes a UCP business profile at /.well-known/ucp, so an agent can check out over UCP, with no browser checkout. A test shows whether a purchase goes through.`, purchaseRefs);
   // Pay-per-request wording is easy to misread: a billing product describing its own
   // customers' metering reads the same as an agent paying. Only a live test settles it.
   if (perRequest) return step("pay", "not_checked", "The docs mention paying per request. A test with a real agent shows whether it can actually pay.", (perRequest.evidence || []).map((e) => e.obs));

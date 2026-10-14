@@ -14,6 +14,7 @@ import { renderPrompt } from "../src/audit/prompts.js";
 import { readConfig, writeConfig } from "../src/audit/config.js";
 import { patternInfo } from "../src/audit/index.js";
 import { wrap, makeStyle, renderVerdict, renderSteps } from "../src/audit/render.js";
+import { writeFakeAeoCli } from "./standards-fixtures.js";
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "cli.js");
 const verdict = (v, reason = "because", basedOn = ["obs_1"]) => ({ verdict: v, reason, basedOn, rule: "r", method: "rule" });
@@ -242,8 +243,11 @@ function serve(table) {
   return new Promise((r) => server.listen(0, "127.0.0.1", () => r({ server, base: `http://127.0.0.1:${server.address().port}/` })));
 }
 
-function runCli(args, cwd) {
-  return spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
+// check runs the aeo-ready catalog by default, which spawns npx for minutes; the CLI tests point it at a stand-in.
+const FAKE_AEO = mkdtempSync(join(tmpdir(), "fake-aeo-"));
+const AEO_CLI = { result: writeFakeAeoCli(FAKE_AEO, "result"), fail: writeFakeAeoCli(FAKE_AEO, "fail") };
+function runCli(args, cwd, aeo = "result") {
+  return spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1", AGENT_READY_AEO_CLI: AEO_CLI[aeo] } });
 }
 
 describe("audit: command", () => {
@@ -299,6 +303,56 @@ describe("audit: command", () => {
     assert.equal(r.stderr.match(/Next {2}/g).length, 1);
     const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "json")], cwd);
     assert.doesNotMatch(json.stdout + json.stderr, /npx @tansohq\/agent-ready test/, "--json prints only the report");
+  });
+
+  it("runs the standards catalog by default: a Standards section after the folder and before Next, standards and files.standards in --json", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
+    const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd);
+    assert.equal(r.status, 0, r.stderr);
+    const folderAt = r.stderr.indexOf("Folder  ");
+    const standardsAt = r.stderr.indexOf("Standards  5 third-party benchmarks of your public surface (aeo-ready ");
+    assert.ok(folderAt > -1 && standardsAt > folderAt && standardsAt < r.stderr.indexOf("Next  "), r.stderr);
+    assert.match(r.stderr, /✗ Fern {10}1\/3 checks passed {7}score 70\/100 C/);
+    assert.match(r.stderr, /Failed checks.*\n {4}Fern\n {6}✗ llms-txt-size\n {6}✗ markdown-endpoint\n {4}AgentGrade\n {6}✗ MCP endpoint responds/);
+    assert.match(r.stderr, /· Vercel {8}did not run: @vercel\/agent-readability timed out after 60s/);
+    assert.ok(r.stderr.indexOf("Discover") < standardsAt, "the steps come first");
+    assert.ok(existsSync(join(cwd, "run", "aeo-ready.json")));
+    const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "j")], cwd);
+    assert.equal(json.status, 0, json.stderr);
+    const audit = JSON.parse(json.stdout);
+    assert.equal(audit.standards.generator.name, "aeo-ready");
+    assert.equal(audit.standards.averageScore, 59);
+    assert.deepEqual(audit.standards.benchmarks.map((b) => [b.name, b.passed, b.total, b.failed.length]), [["agentic-seo", 0, 0, 0], ["Cloudflare", 2, 2, 0], ["Fern", 1, 3, 2], ["Vercel", 0, 0, 0], ["AgentGrade", 1, 3, 2]]);
+    assert.equal(audit.standards.error, null);
+    assert.ok(audit.files.standards.endsWith("aeo-ready.json") && existsSync(join(cwd, audit.files.standards)), audit.files.standards);
+    assert.deepEqual(JSON.parse(readFileSync(join(cwd, "j", "audit-report.json"), "utf8")).standards, audit.standards);
+    // The field is last, so the rest of the document is unchanged.
+    assert.deepEqual(Object.keys(audit).slice(-2), ["standards", "files"]);
+  });
+
+  it("--no-standards skips the catalog: no standards field, no aeo-ready.json, and the section says so", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
+    const r = runCli(["check", site, "--yes", "--no-standards", "--out", join(cwd, "run")], cwd);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /Standards {2}skipped \(--no-standards\)/);
+    assert.ok(!existsSync(join(cwd, "run", "aeo-ready.json")));
+    const json = runCli(["check", site, "--yes", "--json", "--no-standards", "--out", join(cwd, "j")], cwd);
+    const audit = JSON.parse(json.stdout);
+    assert.ok(!("standards" in audit));
+    assert.equal(audit.files.standards, null);
+  });
+
+  it("when aeo-ready fails, the section and --json carry its error and the check still completes", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
+    const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd, "fail");
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /Standards {2}aeo-ready did not run\. aeo-ready exited 1 without JSON: Warning: no network/);
+    const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "j")], cwd, "fail");
+    const audit = JSON.parse(json.stdout);
+    assert.equal(audit.standards.error, "aeo-ready exited 1 without JSON: Warning: no network");
+    assert.deepEqual(audit.standards.benchmarks, []);
+    assert.deepEqual(audit.standards.warnings, ["Warning: no network"]);
+    assert.equal(audit.files.standards, null);
   });
 
   it("--fail-on medium exits 1 when a medium fix exists, and a bad level exits 2", () => {

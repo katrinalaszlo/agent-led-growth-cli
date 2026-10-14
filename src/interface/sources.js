@@ -20,6 +20,8 @@ const WELL_KNOWN = [
   { role: "agent_json", path: "/.well-known/agent.json" },
   { role: "agent_json", path: "/.well-known/agent-card.json" },
   { role: "mcp_json", path: "/.well-known/mcp.json" },
+  // A business's Universal Commerce Protocol profile (ucp.dev: "Businesses publish their profile at /.well-known/ucp").
+  { role: "ucp_profile", path: "/.well-known/ucp" },
   { role: "pricing_json", path: "/pricing.json" },
   { role: "openapi", path: "/openapi.json" },
   { role: "openapi", path: "/.well-known/openapi.json" },

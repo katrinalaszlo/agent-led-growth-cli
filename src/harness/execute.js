@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import * as claudePrint from "./executors/claude-print.js";
 import { personaInstructions } from "./persona.js";
@@ -77,14 +77,18 @@ export function sourcesFrom(events) {
 // Subfolders too: inbox/ holds the product's emails, with their sign-in and claim links.
 // Installed packages and download caches under .tools/ are not the agent's writing and are skipped; .tools/home,
 // where a CLI saves its login, is scrubbed like everything else.
+// Symlinks, sockets and the like are not files the agent wrote: headless Chrome leaves SingletonCookie, SingletonLock
+// and SingletonSocket in its profile under .tools/, the first two dangling symlinks, which a stat cannot follow.
 const UNSCRUBBED = new Set(["node_modules", ".git", join(".tools", "cache"), join(".tools", "npm-global"), join(".tools", "pipx"), join(".tools", "venv")]);
 function scrubWorkDir(workDir, redact, scrubbed = [], base = workDir) {
-  for (const name of readdirSync(workDir)) {
+  for (const entry of readdirSync(workDir, { withFileTypes: true })) {
+    const name = entry.name;
     const p = join(workDir, name);
-    if (statSync(p).isDirectory()) {
+    if (entry.isDirectory()) {
       if (!UNSCRUBBED.has(name) && !UNSCRUBBED.has(relative(base, p))) scrubWorkDir(p, redact, scrubbed, base);
       continue;
     }
+    if (!entry.isFile()) continue;
     // CREDENTIAL.env is read raw by the evaluator and overwritten by the harness afterwards; never scrub it here.
     if (name === "CREDENTIAL.env" || /\.(png|jpg|gz|zip|bin|mp4|webm)$/i.test(name)) continue;
     const before = readFileSync(p, "utf8");

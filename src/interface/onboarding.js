@@ -225,8 +225,8 @@ export const SELLER = /\bcharg(?:e|ing) (?:for|your)\b|\bmonetiz\w*|\baccept(?:i
 export const PROTOCOL_DESCRIPTION = /\b(?:x402|MPP)\b[^.]{0,40}?\bis (?:a|an|the)\b[^.]{0,80}?\b(?:standard|protocol)\b/i;
 // Paying at another site is not paying this product: Stripe's "Agents can now contribute directly to Stripe Climate at
 // [climate.stripe.dev](…) using MPP or x402". The protocols' own sites are not other products.
+export const PROTOCOL_SITES = new Set(["x402.org", "mpp.dev", "agenticcommerce.dev", "ucp.dev", "ap2-protocol.org"]);
 const AT_HOST = /\b(?:at|on)\s+\[?(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})\b/gi;
-const PROTOCOL_SITES = new Set(["x402.org", "mpp.dev"]);
 export function paysElsewhere(sentence, ownDomain) {
   return [...sentence.matchAll(AT_HOST)].some((m) => {
     const domain = registrableDomain(m[1].toLowerCase());

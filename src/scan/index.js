@@ -9,8 +9,8 @@ const require = createRequire(import.meta.url);
 
 // aeo-ready writes .aeo-ready/history.json into process.cwd() and warns on stderr, so it runs as a child
 // with cwd pinned inside our output directory and stderr captured into the scan record.
-export function runAeoReady({ url, dir, cwd, timeoutMs = 300000 }) {
-  const cli = join(dirname(require.resolve("aeo-ready/package.json")), "bin", "cli.js");
+export function runAeoReady({ url, dir, cwd, timeoutMs = 300000, cli = null }) {
+  if (!cli) cli = join(dirname(require.resolve("aeo-ready/package.json")), "bin", "cli.js");
   mkdirSync(cwd, { recursive: true });
   const args = [cli, "scan", url, "--json"];
   if (dir) args.push("--dir", dir);

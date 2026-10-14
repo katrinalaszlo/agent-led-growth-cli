@@ -24,7 +24,8 @@ import { runHarness, TASKS } from "../src/harness/index.js";
 import { inspect, buildAudit, writeAudit, parseTarget, unreachableReason, DEFAULT_TASK } from "../src/audit/index.js";
 import { defaultAnswers, askQuestions, QUESTIONS } from "../src/audit/questions.js";
 import { readConfig, writeConfig, writeVerifyCall, configHost, CONFIG_FILE } from "../src/audit/config.js";
-import { makeStyle, renderVerdict, renderSteps, renderSummary } from "../src/audit/render.js";
+import { makeStyle, renderVerdict, renderSteps, renderSummary, renderStandards } from "../src/audit/render.js";
+import { runStandards } from "../src/audit/standards.js";
 import { parseVerifySpec, buildVerifyTask, classify, failedStep, networkFor, describeSpec } from "../src/verify/index.js";
 import { renderVerify, renderPlan } from "../src/verify/render.js";
 import { inferVerifyCall, latestInterface } from "../src/verify/infer.js";
@@ -85,10 +86,12 @@ program
   .option("--fail-on <level>", "exit 1 when a fix at this severity or above is found: high | medium")
   .option("--out <dir>", "run directory (default: .agent-ready/<host>/<runId>)")
   .option("--json", "print audit-report.json to stdout")
+  .option("--no-standards", "skip the aeo-ready standards catalog (five third-party benchmarks; 1-3 minutes, spawns npx)")
   .option("--no-color", "plain output")
   .addHelpText("after", `
 Examples:
   agent-ready check example.com                           ask 3 questions, write fix prompts
+  agent-ready check example.com --no-standards            the seven steps only, in seconds
   agent-ready check example.com --yes                     use the defaults, no questions
   agent-ready check example.com --fail-on high --json     for CI
   agent-ready check example.com --onboarding existing_account --human-before always --json
@@ -160,12 +163,25 @@ Examples:
     for (const line of renderVerdict(audit, style)) say(line);
     say("");
     for (const line of renderSteps(audit, style)) say(line);
+    // The verdict and the steps are on screen before the catalog runs, since it takes minutes. The audit is written
+    // after it, so audit-report.json carries `standards` too.
+    let standardsFile = null;
+    if (opts.standards) {
+      if (live) process.stderr.write(`\n  ${style.dim("Running the standards catalog: aeo-ready spawns npx, 1-3 minutes…")}`);
+      const { standards, raw } = await runStandards({ url, out });
+      if (live) process.stderr.write("\r\x1b[2K");
+      audit.standards = standards;
+      standardsFile = raw;
+    }
     const paths = writeAudit({ audit, doc, out });
     const rel = (p) => relative(process.cwd(), p) || ".";
     // Where everything is, so an agent can read the prompts and the brief next without guessing paths.
-    const files = { folder: rel(paths.folder), brief: rel(paths.brief), report: rel(paths.json), prompts: audit.findings.map((f) => rel(join(paths.promptsDir, f.file))), config: existsSync(configPath) ? rel(configPath) : null };
+    const files = { folder: rel(paths.folder), brief: rel(paths.brief), report: rel(paths.json), prompts: audit.findings.map((f) => rel(join(paths.promptsDir, f.file))), config: existsSync(configPath) ? rel(configPath) : null, standards: standardsFile ? rel(standardsFile) : null };
     if (opts.json) process.stdout.write(JSON.stringify({ ...audit, files }, null, 2) + "\n");
-    else for (const line of renderSummary(audit, paths, style, rel, savedTo)) say(line);
+    else {
+      for (const line of renderSummary(audit, paths, style, rel, savedTo)) say(line);
+      for (const line of renderStandards(audit.standards || null, style)) say(line);
+    }
     if (opts.failOn && audit.findings.some((f) => FAIL_ON[opts.failOn].includes(f.severity))) process.exitCode = 1;
     // An agent-ready.yml for another product is never overwritten here, so `test` would run against that product.
     const after = readConfig(configPath);

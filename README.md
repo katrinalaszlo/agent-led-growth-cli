@@ -70,7 +70,7 @@ Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `-
 
 ## Limits
 
-- **`check`** sends GET requests only: at most 36 per run (well-known paths such as `/llms.txt`, plus at most 14 links it follows from your pages), all on your product's own registrable domain, so docs on another domain are not read. Each request times out after 10 seconds and reads at most 2 MB. It does not run JavaScript, so a page that renders only in the browser reads as empty, and it cannot see anything behind a login. Steps found in page text can be wrong; only a test with a real agent shows a step works.
+- **`check`** sends GET requests only (the aeo-ready catalog's benchmarks make their own requests to your site and, for Cloudflare's, to isitagentready.com): at most 36 per run (well-known paths such as `/llms.txt`, plus at most 14 links it follows from your pages), all on your product's own registrable domain, so docs on another domain are not read. Each request times out after 10 seconds and reads at most 2 MB. It does not run JavaScript, so a page that renders only in the browser reads as empty, and it cannot see anything behind a login. Steps found in page text can be wrong; only a test with a real agent shows a step works.
 - **`test`** gives the agent 40 turns (`--max-turns`) and $5 of model use (`--max-budget-usd`). A run is stopped after 30 minutes, or after 5 minutes with no output. The agent can reach only your product's own domain and its usual subdomains (`www`, `api`, `docs`, `app`, `auth`, `console`, `dashboard`, `developers`), the hosts in `verify_call` and `verify_exchange`, the registries in `verify_cli`, and anything in `verify_hosts`. It can use Bash, WebFetch and file tools, not a browser, so a signup that works only in a browser (a form that needs JavaScript, or a CAPTCHA) stops it. One run is one attempt; results can differ between runs.
 
 ## Check your product
@@ -80,6 +80,25 @@ npx @tansohq/agent-ready check yourproduct.com
 ```
 
 `check` reads your public pages (GET only, nothing is submitted), shows the seven steps, asks three questions about how agents should onboard, and writes one fix prompt per gap for your coding agent (Claude Code, Cursor). It never writes your product's code.
+
+After the seven steps it runs the [aeo-ready](https://www.npmjs.com/package/aeo-ready) standards catalog: five third-party benchmarks of your public surface (agentic-seo, Cloudflare's isitagentready, Fern's afdocs, Vercel's agent-readability, AgentGrade), about 125 checks covering llms.txt, robots rules, markdown and content negotiation, MCP server cards, A2A agent cards, x402, UCP, ACP, AP2, Web Bot Auth, rate-limit headers and structured JSON errors. It is free, spawns `npx` for three of the benchmarks, and takes 1-3 minutes, so a check takes that much longer than before; `--no-standards` skips it and the seven steps print in seconds. The catalog is theirs, not ours: aeo-ready runs `agentgrade-cli`, `agentic-seo` and `@vercel/agent-readability` unpinned through `npx`, so their checks change when those packages do, and nothing in it changes the seven-step verdict. A benchmark that did not run says why; an aeo-ready failure is printed, never hidden.
+
+```
+  Standards  5 third-party benchmarks of your public surface (aeo-ready 1.7.9)
+             Their checks and scores; they do not change the seven steps above.
+    · agentic-seo   no individual checks    score 63/100 C
+    ✓ Cloudflare    6/6 checks passed       score 1/5 F
+    ✗ Fern          12/20 checks passed     score 70/100 C
+    ✗ Vercel        14/21 checks passed     score 69/100 C
+    ✗ AgentGrade    31/65 checks passed     score 74/100 B
+
+  Failed checks  names as each benchmark reports them
+    Fern
+      ✗ markdown-endpoint
+      ...
+```
+
+Scores are each benchmark's own (Cloudflare grades a level out of 5, the others out of 100). Checks a benchmark skipped are not counted; a warning counts as failed, as aeo-ready itself counts it.
 
 ```
   agent-ready check · neon.com
@@ -130,7 +149,7 @@ The three questions pick the onboarding model the prompts build toward: who hold
 
 `agent_identity` covers an agent signing in as itself. It is detected for [AgentID](https://www.agentid.com) when your own pages say agents sign in with it: a sign-in phrase ("Sign in with AgentID", "signed in to Acme with AgentID", "Sign-up with **AgentID**", "Acme accepts AgentID"); "via AgentID", "the AgentID path" or "chooses AgentID" next to sign-in words; "Identity provider: AgentID" or "Issuer: https://auth.agentid.com" on a page written for agents (llms.txt, auth.md, skill.md); or your own `/auth/agentid` route in your docs or OpenAPI document. The name alone does not count, and neither do sentences that place the sign-in at other products ("where apps accept it", "add Sign in with AgentID to your app"), integration guides ("Add AgentID to Clerk"), or AgentID's own site. When it is detected, the Sign up reason names AgentID, what the agent needs (an AgentMail inbox, an AgentMail key with `app_connect` on, and usually a browser), and whether your docs mention the owner claims. If another agent-first path is the one the report follows, Sign up and Access add a sentence about the AgentID path. `test` cannot complete an AgentID sign-in yet.
 
-Each run writes `.agent-ready/<host>/<runId>/` with `audit-report.json`, `interface.json`, `brief.md` (a one-page brief for security, legal and billing) and `prompts/` (one file per fix, plus `ALL.md`). Every prompt says why, what to build for the chosen model, the security rules, and acceptance tests the coding agent writes and makes pass. With `onboarding: agent_identity`, the Sign up prompt adds Sign in with AgentID to the sign-in the repo already has (Clerk, Auth0, Supabase, Better Auth, Auth.js or its own OpenID Connect client), and names the device flow as the other option. With `try_then_claim`, `limited_until_claimed` or `agent_is_customer`, the Sign up prompt builds the signup endpoint and adds a short note that an existing OpenID Connect sign-in can accept AgentID instead, with what that costs. Choosing `agent_identity` also makes a Sign up that only describes a person handing over a key a gap to fix.
+Each run writes `.agent-ready/<host>/<runId>/` with `audit-report.json`, `interface.json`, `aeo-ready.json` (the catalog's own output, unless `--no-standards`), `brief.md` (a one-page brief for security, legal and billing) and `prompts/` (one file per fix, plus `ALL.md`). Every prompt says why, what to build for the chosen model, the security rules, and acceptance tests the coding agent writes and makes pass. With `onboarding: agent_identity`, the Sign up prompt adds Sign in with AgentID to the sign-in the repo already has (Clerk, Auth0, Supabase, Better Auth, Auth.js or its own OpenID Connect client), and names the device flow as the other option. With `try_then_claim`, `limited_until_claimed` or `agent_is_customer`, the Sign up prompt builds the signup endpoint and adds a short note that an existing OpenID Connect sign-in can accept AgentID instead, with what that costs. Choosing `agent_identity` also makes a Sign up that only describes a person handing over a key a gap to fix.
 
 | Flag | Does |
 | --- | --- |
@@ -138,6 +157,7 @@ Each run writes `.agent-ready/<host>/<runId>/` with `audit-report.json`, `interf
 | `--ask` | Ask again even if `agent-ready.yml` has answers. |
 | `--json` | Print `audit-report.json` (`agent-ready/audit-report@1`) to stdout. |
 | `--fail-on high\|medium` | Exit 1 when a fix at that severity or above is found. |
+| `--no-standards` | Skip the aeo-ready standards catalog. Without it a check spawns `npx` and takes 1-3 minutes longer; still free. |
 | `--no-color` | Plain output. `NO_COLOR` is respected too. |
 
 Exit codes: `0` done, `1` fixes at or above `--fail-on`, `2` usage error, a malformed address, or no answers without a terminal (run it in a terminal once, or pass `--yes`), `3` the site did not answer (no DNS record, refused, timeout or a 5xx; nothing is written), `130` cancelled at a question.
@@ -242,7 +262,7 @@ npx @tansohq/agent-ready test --check --json   # free: checks setup and prints t
 npx @tansohq/agent-ready test --json --yes     # creates a real account on the product; ask the developer first
 ```
 
-- `--json` prints one JSON document to stdout: `agent-ready/audit-report@1` for `check` (with `files.prompts`, `files.brief` and `files.config`, relative to where it ran), `agent-ready/verify@1` for `test`, `agent-ready/verify-plan@1` for `test --check`, and `agent-ready/error@1` for any error, as `{ error: { code, message, hint } }`. Nothing else goes to stdout.
+- `--json` prints one JSON document to stdout: `agent-ready/audit-report@1` for `check` (with `files.prompts`, `files.brief`, `files.config` and `files.standards`, relative to where it ran; `standards` holds the aeo-ready catalog as `{ generator: { name, version }, averageScore, benchmarks: [{ id, name, score, maxScore, grade, passed, total, failed: [check names], error }], warnings, error }` and is absent with `--no-standards`; a benchmark that did not run has `score: null` and its reason in `error`), `agent-ready/verify@1` for `test`, `agent-ready/verify-plan@1` for `test --check`, and `agent-ready/error@1` for any error, as `{ error: { code, message, hint } }`. Nothing else goes to stdout.
 - The three questions have flags: `--onboarding`, `--abuse-cost`, `--human-before`. Any of them, or `--yes`, means no prompt; unanswered ones take their defaults. `--human-before never` lets an agent act alone, `outbound` requires a verified person before an agent sends, publishes, charges or invites, and `always` requires a verified person to own the account before any use. The fix prompts carry that rule.
 - Exit codes: `0` done, `1` fixes at or above `--fail-on` (`check`) or the test failed (`test`), `2` usage or setup, `3` the site did not answer or the run was inconclusive, `130` cancelled.
 - Each fix prompt is written for a coding agent: read `files.prompts[0]`, make the change in the developer's repository, run its acceptance tests, deploy, then run `check` again.
@@ -265,13 +285,13 @@ Hosted test runs: 5 free each calendar month in a workspace a person owns, then 
 
 ### Manage your workspace
 
-An agent (an API key or an AgentID agent session) may move its hosted workspace toward spending less; only the signed-in owner may move it toward spending more. Exact routes: [app.tansohq.com/auth.md](https://app.tansohq.com/auth.md).
+An agent (an API key or an AgentID agent session) may move its hosted workspace toward spending less; only the signed-in owner may move it toward spending more. Cancelling, pausing and lowering the cap needs a key with run or write scope (read-only keys can view usage and list purchases). Exact routes: [app.tansohq.com/auth.md](https://app.tansohq.com/auth.md).
 
-- See usage: `GET /v1/account` returns `billing.usage` (`runsUsed`, `freeRunsUsed`, `paidRunsUsed`, `runsReturned`, `spentCents`, `capCents`, `remainingCents`, `resetsAt`, and `recentRuns`, the last 20, each `charged`: `free`, `paid` or `returned`). All runs: `GET /v1/runs`.
+- See usage: `GET /v1/account` returns `billing.usage` (`runsUsed`, `freeRunsUsed`, `paidRunsUsed`, `runsReturned`, `spentCents`, `capCents`, `remainingCents`, `resetsAt`, and `recentRuns`, the last 20, each `charged`: `free`, `paid` or `returned`) when payments are on; on app.tansohq.com payments are on. All runs: `GET /v1/runs`.
 - List purchases: `GET /v1/purchases`, newest first, at most 50.
-- Cancel a purchase still waiting for approval, or at an unpaid checkout: `POST /v1/purchases/:id/cancel`. Its status becomes `cancelled`, its approval link stops working, and nothing is charged. An agent can cancel up to 10 a workspace a UTC day (`429 cancel_limit`).
+- Cancel a purchase still waiting for approval, or at an unpaid checkout: `POST /v1/purchases/:id/cancel`. Its status becomes `cancelled`, its approval link stops working, and nothing is charged. Keys and agent sessions together can cancel up to 10 purchases a workspace a UTC day; the owner's cancels don't count (`429 cancel_limit`).
 - Pause agent purchases: `POST /v1/billing/pause` with `{ "paused": true }`. Unpausing is owner-only (`403 person_required`).
-- Lower the monthly cap: `POST /v1/billing/cap` with a `capCents` below the current approved cap. Raising it, or setting one when none was approved, is owner-only.
-- Revoke its own key: `POST /v1/keys/self/revoke` (API keys only, not AgentID sessions). On an unclaimed workspace, only the claim code reaches it afterwards.
+- Lower the monthly cap: `POST /v1/billing/cap` with `{ "capCents": 1000 }`, below the current approved cap. Raising it is owner-only; with no cap approved yet it answers `403 person_required` ("No monthly cap was approved for this workspace, so there is none to lower.").
+- Revoke its own key: `POST /v1/keys/self/revoke` (API keys only, not AgentID sessions). Revokes only the calling key; other keys keep working. If it is the workspace's last key and no person owns it yet, only the claim code reaches the workspace afterwards. Give the claim code to the person before revoking.
 
-Owner-only: unpausing, raising the cap, approving, paying and rotating keys. The owner can undo anything an agent did, including on their own workspace.
+Owner-only: unpausing, raising the cap, approving, paying and rotating keys. A revoked key can't be restored and a cancelled purchase stays cancelled. The owner can unpause, raise the cap again, rotate in a new key, or approve a new purchase.
