@@ -54,10 +54,13 @@ function stageFromRun(name, { execution, evaluation, doc }) {
     case "execute":
       if (!hasKey) return { outcome: mode === "signup" ? "not_reached" : "credential_required", basis: execution.files.request ? "agent prepared request.sh with the exact calls; not sent" : "not reachable without a credential", rule: "evaluator_criteria" };
       if (evaluation.stoppedAt === "evaluator_auth_failed") return { outcome: "not_reached", basis: "evaluator could not read the account", rule: "evaluator_criteria" };
+      // A key that works, then a step only a person can pass (an account tier gate before a payment): the product stopped the agent, the agent did not fail.
+      if (evaluation.stoppedAt === "human_required") return { outcome: "human_required", basis: evaluation.checks.find((c) => c.status === "human_required" && c.tier === "local")?.detail || "agent stopped at a step for a person", rule: "evaluator_criteria" };
       return { outcome: evaluation.success ? "passed" : evaluation.authenticated || check("customer_created")?.pass ? "failed" : "not_reached", basis: evaluation.checks.filter((c) => c.tier === "live").map((c) => `${c.id}: ${c.pass ? "pass" : "fail"} (${c.detail})`).join("; "), rule: "evaluator_criteria" };
     case "recover":
       if (!hasKey) return { outcome: mode === "signup" ? "not_reached" : "credential_required", basis: "depends on execute", rule: "errors_then_success" };
       if (evaluation.stoppedAt === "evaluator_auth_failed") return { outcome: "not_reached", basis: "evaluator could not read the account", rule: "errors_then_success" };
+      if (evaluation.stoppedAt === "human_required") return { outcome: "not_reached", basis: "agent stopped at a step for a person", rule: "errors_then_success" };
       if (!calledApi) return { outcome: "not_reached", basis: "agent never called the API", rule: "errors_then_success" };
       if (!execution.errors.length) return { outcome: "not_applicable", basis: "no tool errors occurred", rule: "errors_then_success" };
       return { outcome: evaluation.success ? "passed" : "failed", basis: `${execution.errors.length} error(s), ${execution.recoveryAttempts} action(s) after the first error; final state ${evaluation.success ? "meets" : "does not meet"} the criteria`, rule: "errors_then_success" };

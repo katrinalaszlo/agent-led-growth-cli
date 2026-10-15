@@ -38,19 +38,20 @@ const ALWAYS = [
   "Do not decide or state whether you succeeded. When you have done what you can, stop.",
 ];
 
-function payTask({ id, url, apiHost, network, text, docs, extra = [], credentials = [WALLET] }) {
+function payTask({ id, url, apiHost, network, text, docs, extra = [], credentials = [WALLET], credentialEnvName = null, verifyKey = null, signup = [] }) {
   return {
     id,
     url,
     apiHost,
-    credentialEnvName: null,
+    credentialEnvName,
+    verifyKey,
     text,
     credentials,
     network,
     instructions: {
       always: [...ALWAYS, `The product documents this at ${docs}.`, ...extra],
       withCredential: [],
-      signup: [],
+      signup,
       withoutCredential: ["No wallet is available for this run. Read the documentation, write PLAN.md with the exact paid request you would make, write NEEDS_CREDENTIAL.md naming AGENT_READY_WALLET_KEY, and stop."],
     },
     criteria: {
@@ -74,15 +75,31 @@ export const TASKS = [
     id: "pay-x402-telnyx",
     url: "https://telnyx.com",
     apiHost: "api.telnyx.com",
-    network: ["telnyx.com", "developers.telnyx.com", "api.telnyx.com", "registry.npmjs.org", "mainnet.base.org", "x402.org", "www.x402.org"],
+    network: ["telnyx.com", "developers.telnyx.com", "api.telnyx.com", "agent-inbox.telnyx.com", "portal.telnyx.com", "api.agentmail.to", "docs.agentmail.to", "registry.npmjs.org", "mainnet.base.org", "x402.org", "www.x402.org"],
     text: "Add $1 of account credit to Telnyx by paying over x402 from your own wallet (quote, sign an EIP-3009 authorization, submit).",
     docs: "https://telnyx.com/.well-known/agent-skills/telnyx-x402-payment/SKILL.md",
     extra: [
-      "A Telnyx API key is in the environment variable TELNYX_API_KEY. Use it as the Bearer token for the quote and submit calls. Never print it.",
-      "Flow: POST /v2/x402/credit_account/quote with the USD amount, sign the EIP-712 TransferWithAuthorization from the quote (ethers or viem), then POST /v2/x402/credit_account with the quote id and the base64 payload in the body. The record's status moves to settled and carries tx_hash: that is the txHash for PAYMENT.json.",
-      "If Telnyx answers 403, the account lacks the X402_PAYMENTS_ENABLED flag: write NEEDS_HUMAN.md and stop.",
+      "Flow: POST /v2/x402/credit_account/quote with the USD amount (1.00), sign the EIP-712 TransferWithAuthorization from the quote (viem), then POST /v2/x402/credit_account with the quote id and the base64 payload in the body. The record's status moves to settled and carries tx_hash: that is the txHash for PAYMENT.json.",
+      "If Telnyx answers 403 to the quote, the account lacks the X402_PAYMENTS_ENABLED flag: write NEEDS_HUMAN.md quoting the response and stop.",
     ],
-    credentials: [WALLET, { env: "TELNYX_API_KEY", injectAs: "TELNYX_API_KEY", test: /^KEY[A-Za-z0-9_-]{12,}$/, rejectReason: "must be a Telnyx API key (KEY...)", description: "Telnyx API key of the account to credit" }],
+    credentialEnvName: "TELNYX_API_KEY",
+    // The evaluator's own authenticated read with the key the agent made, so the funnel's acquire and authenticate
+    // steps rest on the evaluator, not on the agent's say-so.
+    verifyKey: {
+      describe: "GET https://api.telnyx.com/v2/balance with Authorization: Bearer <key>",
+      call: async (key) => {
+        const r = await fetch("https://api.telnyx.com/v2/balance", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(30_000) });
+        const text = await r.text();
+        return { ok: r.status === 200, status: r.status, detail: r.status === 200 ? "balance read with the acquired key" : `HTTP ${r.status}: ${text.slice(0, 120)}` };
+      },
+    },
+    credentials: [WALLET, { env: "TELNYX_API_KEY", injectAs: "TELNYX_API_KEY", test: /^KEY[A-Za-z0-9_-]{12,}$/, rejectReason: "must be a Telnyx API key (KEY...)", description: "Telnyx API key of the account to credit; without it, --mode signup has the agent sign up first" }],
+    // With --mode signup the harness gives the agent an inbox and a persona; the agent signs up the way Telnyx's
+    // agent signup documents (https://telnyx.com/agent-signup.md), then pays with the key it made.
+    signup: [
+      "You have no Telnyx API key yet. Sign up first, as the persona below, following https://telnyx.com/agent-signup.md: the magic link arrives in your inbox. Create an API key, write it to CREDENTIAL.env as a single line TELNYX_API_KEY=<key> and nowhere else, then use it as the Bearer token for the quote and submit calls.",
+      "If signup reaches a step no agent can pass (CAPTCHA, phone, identity documents), write NEEDS_HUMAN.md stating the exact step and URL, and stop without paying.",
+    ],
   }),
 ];
 
@@ -116,13 +133,36 @@ export function parsePayment(text) {
 
 // Deterministic. Reads what the agent recorded, then confirms the money moved on Base, from the agent's wallet, for
 // no more than the cap. Never trusts the agent's amountUsd: the chain's number is the one reported.
-export async function evaluate({ files, mode, fetchReceipt = getReceipt, env = process.env }) {
+export async function evaluate({ files, mode, fetchReceipt = getReceipt, env = process.env, credentialEnvName = null, verifyKey = null }) {
   const checks = [];
   const plan = files.read("PLAN.md");
   const planUrl = plan ? (plan.match(/https?:\/\/[^\s)>\]]+/) || [null])[0] : null;
   checks.push({ id: "plan_written", tier: "local", pass: Boolean(plan && planUrl), detail: plan ? `PLAN.md ${plan.length} chars; cites ${planUrl || "no URL"}` : "no PLAN.md", evidence: { file: "PLAN.md" } });
 
-  const done = (stoppedAt) => ({ method: "deterministic", checkedAt: new Date().toISOString(), success: checks.filter((c) => c.tier === "live").length > 0 && checks.every((c) => c.pass === true), stoppedAt, checks, authenticated: null, objects: null, keySource: null });
+  let authenticated = null;
+  let keySource = null;
+  const done = (stoppedAt) => ({ method: "deterministic", checkedAt: new Date().toISOString(), success: checks.filter((c) => c.tier === "live").length > 0 && checks.every((c) => c.pass === true), stoppedAt, checks, authenticated, objects: null, keySource });
+
+  // With --mode signup on a product that needs its own key, the agent signed up first. Record the key it wrote
+  // (credential_acquired) and read the account with it (credential_works), the way the signup tasks do, so the
+  // funnel's acquire and authenticate steps come from the evaluator.
+  if (mode === "signup" && credentialEnvName) {
+    const cred = files.readRaw("CREDENTIAL.env") || "";
+    const found = (cred.match(new RegExp(`^\\s*${credentialEnvName}\\s*=\\s*"?([^"\\s]+)"?`, "m")) || [])[1] || null;
+    const human = files.read("NEEDS_HUMAN.md");
+    if (!found) {
+      checks.push({ id: "credential_acquired", tier: "local", pass: false, status: human ? "human_required" : "not_acquired", detail: human ? `stopped at a human-only step: ${human.split("\n").find((l) => l.trim() && !l.startsWith("#"))?.trim().slice(0, 160) || "see NEEDS_HUMAN.md"}` : `no ${credentialEnvName} in CREDENTIAL.env and no NEEDS_HUMAN.md`, evidence: { file: human ? "NEEDS_HUMAN.md" : null } });
+      checks.push({ id: "payment_recorded", tier: "local", pass: false, status: human ? "human_required" : "not_acquired", detail: "no key to pay with", evidence: { file: human ? "NEEDS_HUMAN.md" : null } });
+      for (const id of ["credential_works", "transaction_confirmed", "paid_from_wallet", "amount_within_cap", "paid_request_ok"]) checks.push({ id, tier: "live", pass: null, status: human ? "human_required" : "not_acquired", detail: "no key to pay with", evidence: null });
+      return done(human ? "human_required" : "not_acquired");
+    }
+    checks.push({ id: "credential_acquired", tier: "local", pass: true, detail: `CREDENTIAL.env holds ${credentialEnvName} (${found.length} chars)`, evidence: { file: "CREDENTIAL.env" } });
+    keySource = "agent";
+    let result;
+    try { result = await verifyKey.call(found); } catch (err) { result = { ok: false, status: 0, detail: `verify call failed: ${err.message}` }; }
+    checks.push({ id: "credential_works", tier: "live", pass: result.ok, detail: result.detail, evidence: { request: verifyKey.describe, status: result.status } });
+    authenticated = result.ok;
+  }
 
   if (mode === "none") {
     const needs = files.read("NEEDS_CREDENTIAL.md");

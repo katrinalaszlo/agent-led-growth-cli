@@ -32,6 +32,10 @@ describe("pay-x402: the wallet key", () => {
     assert.ok(ALL["pay-x402-agentmail"]);
     assert.ok(ALL["pay-x402-telnyx"]);
     assert.equal(ALL["pay-x402-telnyx"].task.credentials.length, 2);
+    // Telnyx needs its own key, so --mode signup has the agent sign up first and the harness learns the key it writes.
+    assert.equal(ALL["pay-x402-telnyx"].task.credentialEnvName, "TELNYX_API_KEY");
+    assert.match(ALL["pay-x402-telnyx"].task.instructions.signup[0], /agent-signup\.md/);
+    assert.equal(ALL["pay-x402-agentmail"].task.instructions.signup.length, 0);
   });
 
   it("the cap is a positive number of dollars, 2 by default", () => {
@@ -72,6 +76,32 @@ describe("pay-x402: the evaluator", () => {
     const rpc = await evaluate({ mode: "given", files: files({ "PLAN.md": PLAN, "PAYMENT.json": payment() }), fetchReceipt: async () => { throw new Error("Base RPC answered 503"); }, env: {} });
     assert.equal(rpc.stoppedAt, "evaluator_rpc_failed");
     assert.equal(rpc.checks.find((c) => c.id === "transaction_confirmed").pass, null);
+  });
+
+  it("in signup mode, records the key the agent made and reads the account with it, so the funnel's acquire step is the evaluator's", async () => {
+    const telnyx = TASKS.find((t) => t.id === "pay-x402-telnyx");
+    assert.equal(telnyx.verifyKey.describe, "GET https://api.telnyx.com/v2/balance with Authorization: Bearer <key>");
+    const verifyKey = { describe: telnyx.verifyKey.describe, call: async (key) => (assert.equal(key, "KEY0123456789abcdef"), { ok: true, status: 200, detail: "balance read" }) };
+    // Signed up, key works, Telnyx refused the quote: acquire passed, authenticate passed, no payment.
+    const refused = await evaluate({ mode: "signup", credentialEnvName: "TELNYX_API_KEY", verifyKey, files: files({ "PLAN.md": PLAN, "CREDENTIAL.env": "TELNYX_API_KEY=KEY0123456789abcdef\n", "NEEDS_HUMAN.md": "403: Feature not permitted" }), fetchReceipt: async () => { throw new Error("must not be called"); }, env: {} });
+    assert.equal(refused.stoppedAt, "human_required");
+    assert.equal(refused.checks.find((c) => c.id === "credential_acquired").pass, true);
+    assert.equal(refused.checks.find((c) => c.id === "credential_works").pass, true);
+    assert.equal(refused.authenticated, true);
+    assert.equal(refused.keySource, "agent");
+    // Signed up and paid: every check passes.
+    const paid = await evaluate({ mode: "signup", credentialEnvName: "TELNYX_API_KEY", verifyKey, files: files({ "PLAN.md": PLAN, "CREDENTIAL.env": "TELNYX_API_KEY=KEY0123456789abcdef\n", "PAYMENT.json": payment() }), fetchReceipt: async () => receipt(2), env: {} });
+    assert.equal(paid.success, true);
+    assert.equal(paid.keySource, "agent");
+    // No key and no note: acquire failed, and the leaderboard's payment checks are still all present.
+    const none = await evaluate({ mode: "signup", credentialEnvName: "TELNYX_API_KEY", verifyKey, files: files({ "PLAN.md": PLAN }), fetchReceipt: async () => { throw new Error("must not be called"); }, env: {} });
+    assert.equal(none.stoppedAt, "not_acquired");
+    assert.equal(none.checks.find((c) => c.id === "credential_acquired").status, "not_acquired");
+    for (const id of ["plan_written", "payment_recorded", "transaction_confirmed", "paid_from_wallet", "amount_within_cap", "paid_request_ok"]) assert.ok(none.checks.some((c) => c.id === id), id);
+    // AgentMail needs no key: signup mode adds nothing.
+    const agentmail = await evaluate({ mode: "signup", files: files({ "PLAN.md": PLAN, "PAYMENT.json": payment() }), fetchReceipt: async () => receipt(2), env: {} });
+    assert.equal(agentmail.checks.some((c) => c.id === "credential_acquired"), false);
+    assert.equal(agentmail.success, true);
   });
 
   it("without a wallet, stops at credential_required", async () => {

@@ -12,8 +12,9 @@ import * as stripeSubscription from "./tasks/stripe-subscription.js";
 import * as agentmailSend from "./tasks/agentmail-send.js";
 import { SIGNUP_TASKS } from "./tasks/signup.js";
 import * as payX402 from "./tasks/pay-x402.js";
+import * as payStripeProjects from "./tasks/pay-stripe-projects.js";
 
-export const TASKS = { [stripeSubscription.task.id]: stripeSubscription, [agentmailSend.task.id]: agentmailSend, ...Object.fromEntries(SIGNUP_TASKS.map((t) => [t.task.id, t])), ...Object.fromEntries(payX402.TASKS.map((t) => [t.id, { task: t, evaluate: payX402.evaluate }])) };
+export const TASKS = { [stripeSubscription.task.id]: stripeSubscription, [agentmailSend.task.id]: agentmailSend, ...Object.fromEntries(SIGNUP_TASKS.map((t) => [t.task.id, t])), ...Object.fromEntries(payX402.TASKS.map((t) => [t.id, { task: t, evaluate: (args) => payX402.evaluate({ ...args, credentialEnvName: t.credentialEnvName, verifyKey: t.verifyKey }) }])), [payStripeProjects.task.id]: payStripeProjects };
 export const MODES = ["signup", "given", "none"];
 
 // Inspect → journey (rules) → execute (agent, confined) → evaluate (deterministic) → reconcile. One task, one product.
@@ -61,8 +62,11 @@ export async function runHarness({ taskId, taskModule = null, runId, outDir, ver
   writeFileSync(join(outDir, "journey.json"), JSON.stringify(journey, null, 2));
   log({ step: "journey", text: journey.failure ? `rules stop at ${journey.failure.stage}` : journey.unresolved?.length ? `${journey.unresolved.length} stage(s) remain unresolved from public evidence` : "rules support every evidence-based stage" });
 
-  log({ step: "execute", text: `${executorName} in ${workDir}; mode ${mode}; network ${mod.task.network.join(", ")}` });
+  log({ step: "execute", text: `${executorName} in ${workDir}; mode ${mode}; network ${mod.task.network.join(", ")}${mod.task.sandbox?.enabled === false ? "; Bash runs outside the sandbox (the task's CLI cannot run inside it)" : ""}` });
   mkdirSync(workDir, { recursive: true });
+  // A task that reads the operator's own state before the agent runs (Stripe Projects: the project files and the
+  // charges so far) does it here; the evaluator gets what it read as `prepared`.
+  const prepared = mod.prepare ? await mod.prepare({ workDir, mode, env: process.env, log: (text) => log({ step: "prepare", text }) }) : null;
   const poller = inbox ? startPolling({ workDir, inbox, key: mailKey, log: (e) => log({ step: "agent", ...e }) }) : null;
   const execution = await execute({
     task: mod.task, runId, doc, workDir, credentials, mode, persona, executorName, maxTurns, maxBudgetUsd, model,
@@ -77,7 +81,7 @@ export async function runHarness({ taskId, taskModule = null, runId, outDir, ver
   };
   const inboxDir = join(workDir, "inbox");
   const inboxFiles = existsSync(inboxDir) ? readdirSync(inboxDir).filter((f) => f.endsWith(".json")).map((f) => JSON.parse(readFileSync(join(inboxDir, f), "utf8"))) : [];
-  const evaluation = await mod.evaluate({ runId, files, credentials, mode, inboxFiles, harnessMailKey: mailKey });
+  const evaluation = await mod.evaluate({ runId, files, credentials, mode, inboxFiles, harnessMailKey: mailKey, prepared, workDir });
   // CREDENTIAL.env was read raw by the evaluator; now remove it so no acquired key stays on disk.
   if (existsSync(join(workDir, "CREDENTIAL.env"))) writeFileSync(join(workDir, "CREDENTIAL.env"), readFileSync(join(workDir, "CREDENTIAL.env"), "utf8").replace(/^(\s*[A-Z0-9_]+\s*=).*$/gm, "$1<redacted after evaluation>"));
   writeFileSync(join(outDir, "evaluation.json"), JSON.stringify(evaluation, null, 2));

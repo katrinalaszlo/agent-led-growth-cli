@@ -41,23 +41,27 @@ const isLocalHost = (host) => host === "localhost" || /^127\.\d+\.\d+\.\d+$/.tes
 
 const GUARD = fileURLToPath(new URL("./identity-guard.mjs", import.meta.url));
 
-export function settingsFor({ network, tools, allowedEmails = [] }) {
+export function settingsFor({ network, tools, allowedEmails = [], sandbox = {} }) {
   // WebFetch: default-deny, then allow the task's domains. Bash: Seatbelt sandbox with a strict outbound allowlist,
   // and the run fails rather than proceeding unsandboxed. Docs: code.claude.com/docs/en/sandboxing.md, permissions.md.
+  // A task sets sandbox: { enabled: false } only when the command it exists to run cannot work inside the sandbox:
+  // Stripe Projects keeps the operator's session in the macOS Keychain, which the sandbox does not reach
+  // (tasks/pay-stripe-projects.js). Bash then runs with the operator's own access, and the run's confinement says so.
   return {
     permissions: {
       allow: [...tools.filter((t) => t !== "WebFetch"), ...network.map((d) => `WebFetch(domain:${d})`)],
       deny: ["WebFetch", "WebSearch", "Agent", "Task", "NotebookEdit"],
     },
-    sandbox: {
+    sandbox: sandbox.enabled === false ? { enabled: false } : {
       enabled: true,
       failIfUnavailable: true,
       // Run 02 showed the agent taking the "run outside the sandbox" retry to launch a browser. Closed.
       allowUnsandboxedCommands: false,
       // A product on this machine is reachable only with allowLocalBinding (macOS), and an allowedDomains entry for
       // localhost does not change a direct connection. It opens every local port, including other services, so it
-      // is on only when the target itself is local. Docs: code.claude.com/docs/en/sandboxing.md.
-      network: { allowedDomains: network, strictAllowlist: true, ...(network.some(isLocalHost) ? { allowLocalBinding: true } : {}) },
+      // is on only when the target itself is local or the task's CLI needs it (Stripe's Projects plugin listens on
+      // 127.0.0.1 to talk to the Stripe CLI). Docs: code.claude.com/docs/en/sandboxing.md.
+      network: { allowedDomains: network, strictAllowlist: true, ...(network.some(isLocalHost) || sandbox.allowLocalBinding ? { allowLocalBinding: true } : {}) },
     },
     // Enforced, not asked: every command, fetch and written file is checked for an email that is not the test identity's.
     hooks: { PreToolUse: [{ matcher: "Bash|WebFetch|Write|Edit|MultiEdit", hooks: [{ type: "command", command: [process.execPath, GUARD, ...allowedEmails].map((a) => JSON.stringify(a)).join(" ") }] }] },
@@ -82,8 +86,8 @@ export function argsFor({ prompt, maxTurns, settingsPath, tools, model = null, m
   return args;
 }
 
-export async function run({ prompt, workDir, childEnv, tools, network, maxTurns, maxBudgetUsd = null, model, redact, learn = () => {}, onEvent, allowedEmails = [], timeoutMs = DEFAULT_TIMEOUT_MS, idleMs = DEFAULT_IDLE_MS }) {
-  const settings = settingsFor({ network, tools, allowedEmails });
+export async function run({ prompt, workDir, childEnv, tools, network, maxTurns, maxBudgetUsd = null, model, redact, learn = () => {}, onEvent, allowedEmails = [], sandbox = {}, timeoutMs = DEFAULT_TIMEOUT_MS, idleMs = DEFAULT_IDLE_MS }) {
+  const settings = settingsFor({ network, tools, allowedEmails, sandbox });
   const settingsPath = join(workDir, "executor-settings.json");
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   const args = argsFor({ prompt, maxTurns, settingsPath, tools, model, maxBudgetUsd });

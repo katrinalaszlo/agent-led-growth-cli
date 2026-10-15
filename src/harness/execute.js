@@ -6,7 +6,7 @@ import { secretsInMail, secretsInText } from "./secrets.js";
 
 // Executor interface. Any replacement (Agent SDK, another agent) implements:
 //   name: string
-//   run({ prompt, workDir, childEnv, tools, network, maxTurns, model, redact, learn, onEvent }) → {
+//   run({ prompt, workDir, childEnv, tools, network, maxTurns, model, redact, learn, onEvent, sandbox }) → {
 //     executor: { name, model, maxTurns, tools, confinement }, startedAt, finishedAt, exitCode,
 //     stoppedBecause, turns, costUsd, stderr, rawTrace }
 // and emits normalized events through onEvent:
@@ -146,7 +146,7 @@ export async function execute({ task, runId, doc, workDir, credentials, mode, pe
     log(entry);
   };
   const childEnv = { ...credentials.childEnv, ...toolEnv(workDir, credentials.childEnv.PATH) };
-  const run = await executor.run({ prompt, workDir, childEnv, tools: EXECUTOR_TOOLS, network: task.network, maxTurns, maxBudgetUsd, model, redact: credentials.redact, learn: credentials.learn, onEvent, allowedEmails: persona?.email ? [persona.email] : [] });
+  const run = await executor.run({ prompt, workDir, childEnv, tools: EXECUTOR_TOOLS, network: task.network, maxTurns, maxBudgetUsd, model, redact: credentials.redact, learn: credentials.learn, onEvent, allowedEmails: persona?.email ? [persona.email] : [], sandbox: task.sandbox || {}, ...(task.timeoutMs ? { timeoutMs: task.timeoutMs } : {}) });
   const extra = await afterRun();
 
   // If the agent acquired a key, learn its value now so everything written from here on is scrubbed of it.

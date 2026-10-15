@@ -281,6 +281,14 @@ Two of the built-in tasks have the agent pay a product over x402 from its own wa
 AGENT_READY_WALLET_KEY=0x… AGENT_READY_PAY_CAP_USD=2 npx @tansohq/agent-ready execute --task pay-x402-agentmail
 ```
 
+### Pay through Stripe Projects
+
+`pay-stripe-projects-cloudflare` has the agent buy Cloudflare's Workers Paid plan ($5/month) through [Stripe Projects](https://docs.stripe.com/projects), the pattern where a person sets a wallet up once and a program spends from it. The person's part comes first and is not the agent's: `stripe login` from a browser, `stripe projects init` in a folder, `stripe projects billing add` (a card, entered on a Stripe Checkout page), `stripe projects billing update --limit <dollars>` (the default is $100 per provider per month) and `stripe projects link cloudflare` (a Cloudflare sign-in). Put that folder's path in `AGENT_READY_STRIPE_PROJECT_DIR`; the run copies its `.projects/` into the work directory and the agent runs one command, `stripe projects add cloudflare/workers:paid`. **Real money moves**: the card on your Stripe account is charged. The evaluator reads `stripe projects spend` before and after the run and passes only when the charge grew by no more than `AGENT_READY_PAY_CAP_USD` (default 5.00 for this task), `stripe projects status` lists the new resource, and Cloudflare's API shows the subscription on, read with a token of yours that can read the account's billing (`AGENT_READY_CLOUDFLARE_TOKEN`, `AGENT_READY_CLOUDFLARE_ACCOUNT`); without that token the run is never a success. The command's own verdict is not consulted: on the first real run it said "Provisioning failed" after the charge went through and the plan was on. This task runs Bash **outside** the sandbox, unlike every other: Stripe's plugin listens on 127.0.0.1 and the session lives in the macOS Keychain, neither reachable from inside it. The run's `execution.json` records that.
+
+```bash
+AGENT_READY_STRIPE_PROJECT_DIR=~/stripe-project AGENT_READY_CLOUDFLARE_TOKEN=… AGENT_READY_CLOUDFLARE_ACCOUNT=… npx @tansohq/agent-ready execute --task pay-stripe-projects-cloudflare
+```
+
 Source: https://github.com/tansohq/agent-ready-cli. Issues and questions go there. The hosted dashboard at [app.tansohq.com](https://app.tansohq.com) ([docs](https://app.tansohq.com/docs), [agent access](https://app.tansohq.com/auth.md)) runs saved tests on a schedule with email or webhook alerts. A hosted test run is not the same harness as `test`: Tanso's model proposes one action at a time and the runner makes bounded HTTP requests to the product's own hosts. It does not drive browser UI or complete arbitrary signup forms.
 
 | | CLI `test` | Hosted test run |

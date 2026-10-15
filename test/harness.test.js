@@ -132,6 +132,19 @@ describe("signup mode", () => {
     assert.equal(r.reconciled.stages.find((s) => s.stage === "authenticate").agent.outcome, "not_reached");
   });
 
+  it("reads a signed-up key that works, then a product gate before the payment, as human_required at execute, not failed", async () => {
+    const { evaluate: evaluatePay } = await import("../src/harness/tasks/pay-x402.js");
+    const verifyKey = { describe: "GET balance", call: async () => ({ ok: true, status: 200, detail: "balance read" }) };
+    const evaluation = await evaluatePay({ mode: "signup", credentialEnvName: "TELNYX_API_KEY", verifyKey, files: files({ "PLAN.md": "REST API; https://telnyx.com/.well-known/agent-skills/telnyx-x402-payment/SKILL.md", "CREDENTIAL.env": "TELNYX_API_KEY=KEY0123456789abcdef\n", "NEEDS_HUMAN.md": "# NEEDS_HUMAN\n403 Feature not permitted at https://api.telnyx.com/v2/x402/credit_account/quote" }), fetchReceipt: async () => { throw new Error("must not be called"); }, env: {} });
+    const execution = baseExec({ mode: "signup", persona: { name: "Ari Vale", email: "x@agentmail.to" }, mail: { provider: "relay", email: "x@agentmail.to", delivered: [{ file: "001-a.json" }] }, commands: ["curl https://api.telnyx.com/v2/x402/credit_account/quote"], files: { plan: "REST API https://telnyx.com", needsHuman: "403", request: null } });
+    const r = reconcile({ journey, execution, evaluation, doc });
+    const stage = (name) => r.reconciled.stages.find((s) => s.stage === name).agent.outcome;
+    assert.equal(stage("acquire_credential"), "passed");
+    assert.equal(stage("authenticate"), "passed");
+    assert.equal(stage("execute"), "human_required");
+    assert.equal(stage("recover"), "not_reached");
+  });
+
   it("learns an agent-acquired key and redacts it afterwards", () => {
     const creds = resolveCredentials(task, {});
     creds.learn("rk_test_agentGotThis123");
