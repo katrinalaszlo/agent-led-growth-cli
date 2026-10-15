@@ -4,6 +4,13 @@ import { wrap } from "../audit/render.js";
 
 const OUTCOME = { passed: "PASS", handoff: "PASS (handoff)", failed: "FAIL", inconclusive: "INCONCLUSIVE" };
 
+// Same units as the dashboard's timing line: "850 ms", "42 s", "2 min 10 s".
+export function duration(ms) {
+  if (ms < 1000) return `${ms} ms`;
+  if (ms < 60000) return `${Math.round(ms / 1000)} s`;
+  return `${Math.floor(ms / 60000)} min ${Math.round((ms % 60000) / 1000)} s`;
+}
+
 function mark(pass, style) {
   if (pass === true) return style.green("✓");
   if (pass === false) return style.red("✗");
@@ -32,7 +39,8 @@ export function renderVerify({ host, task, result, verdict, folder, promptFile }
   out.push("", `  ${style.bold(paint(OUTCOME[verdict.outcome]))}  ${verdict.reason}`);
   const execution = result.execution || {};
   const cost = typeof execution.costUsd === "number" ? ` · $${execution.costUsd.toFixed(2)}` : "";
-  out.push(`  ${style.dim(`${execution.turns ?? "?"} turns${cost} · evidence in ${folder}/`)}`);
+  const ran = typeof execution.durationMs === "number" ? `ran ${duration(execution.durationMs)} · ` : "";
+  out.push(`  ${style.dim(`${ran}${execution.turns ?? "?"} turns${cost} · evidence in ${folder}/`)}`);
   if (promptFile) out.push("", `  ${style.bold("Next")}  paste ${promptFile} into your coding agent,`, `        then deploy, run ${style.bold(`npx @tansohq/agent-ready check ${host}`)} again,`, "        and test again");
   else if (verdict.outcome === "passed" || verdict.outcome === "handoff") out.push("", ...wrap("Keep it passing: app.tansohq.com runs this test on a schedule and emails you when it breaks (5 free runs a month).", 76).map((l) => `  ${style.dim(l)}`));
   out.push("");

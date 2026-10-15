@@ -1,6 +1,6 @@
 {
   "name": "agent-ready",
-  "version": "0.4.14",
+  "version": "0.4.15",
   "description": "Check whether an AI agent can sign up for and use your product: check its public pages for free, or test it with a real agent that signs up and has its key checked.",
   "author": {
     "name": "Tanso",

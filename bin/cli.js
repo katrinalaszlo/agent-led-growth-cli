@@ -27,7 +27,7 @@ import { readConfig, writeConfig, writeVerifyCall, configHost, CONFIG_FILE } fro
 import { makeStyle, renderVerdict, renderSteps, renderSummary, renderStandards } from "../src/audit/render.js";
 import { runStandards } from "../src/audit/standards.js";
 import { parseVerifySpec, buildVerifyTask, classify, failedStep, networkFor, describeSpec } from "../src/verify/index.js";
-import { renderVerify, renderPlan } from "../src/verify/render.js";
+import { renderVerify, renderPlan, duration } from "../src/verify/render.js";
 import { inferVerifyCall, latestInterface } from "../src/verify/infer.js";
 import { renderPrompt } from "../src/audit/prompts.js";
 import { patternInfo } from "../src/audit/index.js";
@@ -76,7 +76,7 @@ const QUESTION_FLAGS = { onboarding: "onboarding", abuseCost: "abuse_cost", huma
 program
   .command("check <url>")
   .alias("audit")
-  .description("Check whether AI agents can find, sign up for, use and pay for your product. Reads public pages only, asks how agents should onboard, and writes a fix prompt for each gap.")
+  .description("Check whether AI agents can find, sign up for, use and pay for your product. Free: reads public pages only (GET), asks how agents should onboard, writes a fix prompt for each gap.")
   .option("-y, --yes", "accept the defaults without asking")
   .option("--ask", `ask again even if ${CONFIG_FILE} has answers`)
   .option("--task <text>", "what an agent should accomplish", DEFAULT_TASK)
@@ -128,7 +128,7 @@ Examples:
     if (live) process.stderr.write("\r\x1b[2K");
     const unreachable = unreachableReason(doc);
     if (unreachable) fail(opts, 3, "unreachable", `Could not reach ${url}. ${unreachable}`, "Check the address and try again. Nothing was written.");
-    say(`  ${style.dim(`Read ${doc.observations.filter((o) => o.ok).length} public pages. GET only, nothing submitted.`)}`);
+    say(`  ${style.dim(`Read ${doc.observations.filter((o) => o.ok).length} public ${doc.observations.filter((o) => o.ok).length === 1 ? "page" : "pages"}. GET only, nothing submitted.`)}`);
 
     let answers = defaultAnswers(funnel);
     if (savedHere && !opts.ask) {
@@ -257,7 +257,7 @@ function claudeStatus() {
 program
   .command("test [url]")
   .alias("verify")
-  .description("Have a real agent try the task in agent-ready.yml on your product. The checker then calls your API with the agent's key, with no key and with a wrong key, using verify_call or a call from your OpenAPI document. Creates an account on the product and uses your Claude Code.")
+  .description("Have a real agent, your Claude Code, try the task in agent-ready.yml on your product. The checker then calls your API with the agent's key, with no key and with a wrong key, using verify_call or a call from your OpenAPI document. Creates a real account on your product and spends your Claude Code's model use, capped at $5. Asks before it starts.")
   .option("-y, --yes", "skip the confirmation and save an inferred verify_call to agent-ready.yml")
   .option("--inbox <address>", "an inbox you will relay mail from into the run's work/inbox/, for products that email a code")
   .option("--max-turns <n>", "agent turn budget", (v) => parseInt(v, 10), 40)
@@ -365,12 +365,16 @@ Examples:
     const noInbox = !mailKey && !opts.inbox;
     const live = !opts.json && Boolean(process.stderr.isTTY);
     let steps = 0;
+    const startedAt = Date.now();
+    const progress = () => process.stderr.write(`\r\x1b[2K  ${style.dim(`Agent working · ${steps} actions · ${duration(Date.now() - startedAt)}`)}`);
     const log = (e) => {
       if (e.step === "agent" && e.kind === "tool_use") steps += 1;
-      if (live) process.stderr.write(`\r\x1b[2K  ${style.dim(`Agent working · ${steps} actions`)}`);
+      if (live) progress();
     };
+    const clock = live ? setInterval(progress, 1000) : null;
     if (!opts.json) console.error(`\n  ${style.dim(`Starting the agent on ${host}${noInbox ? " (no inbox)" : ""}…`)}`);
     const result = await runHarness({ taskModule: buildVerifyTask({ url, task, spec }), runId: id, outDir: out, version: pkg.version, mode: "signup", inboxAddress: opts.inbox || null, noInbox, executorName: opts.executor, maxTurns: opts.maxTurns, maxBudgetUsd: opts.maxBudgetUsd, model: opts.model, log });
+    if (clock) clearInterval(clock);
     if (live) process.stderr.write("\r\x1b[2K");
     const resultMd = existsSync(join(out, "work", "RESULT.md")) ? readFileSync(join(out, "work", "RESULT.md"), "utf8") : "";
     const verdict = classify(result, config.onboarding, resultMd);
