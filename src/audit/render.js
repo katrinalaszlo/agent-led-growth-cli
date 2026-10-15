@@ -6,15 +6,9 @@ export function makeStyle(enabled) {
   return { bold: wrap("1"), dim: wrap("2"), green: wrap("32"), red: wrap("31"), yellow: wrap("33") };
 }
 
-const PASSING = new Set(["agent_did", "agent_can", "handoff"]);
-const FAILING = new Set(["needs_person", "blocked"]);
-const TAG = { observed: "from your files", heuristic: "from page text", not_checked: "needs a test run" };
+import { PASSING, mark, label } from "../dashboard/strip.js";
+const TAG = { observed: "from your files", heuristic: "from page text", not_checked: "needs a test run", tested: "from your test" };
 
-function mark(state, style) {
-  if (PASSING.has(state)) return style.green("✓");
-  if (FAILING.has(state)) return style.red("✗");
-  return style.dim("·");
-}
 
 // Breaks text into lines of at most `width` characters, at spaces. A word longer than a line (a long URL) is split.
 export function wrap(text, width) {
@@ -111,5 +105,26 @@ export function renderStandards(standards, style) {
   }
   if (standards.error) out.push("", `  ${style.red("aeo-ready:")} ${standards.error}`);
   out.push("");
+  return out;
+}
+
+// The seven steps on one or two lines, the same strip the hosted product draws: a mark per step, then which steps a
+// test proved and where the agent stopped. Every line fits 80 columns and reads the same with color stripped.
+export function renderStrip(funnel, style, { stoppedAt = null } = {}) {
+  const cells = funnel.steps.map((s) => `${mark(s.state, style)} ${s.id === stoppedAt ? style.bold(s.name) : s.name}`);
+  const plain = funnel.steps.map((s) => `x ${s.name}`);
+  const rows = [];
+  let row = [], width = 0;
+  cells.forEach((cell, i) => {
+    if (row.length && width + 2 + plain[i].length > 76) { rows.push(row); row = []; width = 0; }
+    width += (row.length ? 2 : 0) + plain[i].length;
+    row.push(cell);
+  });
+  if (row.length) rows.push(row);
+  const out = ["", `  ${style.bold("Your product, seven steps")}`, ...rows.map((r) => `  ${r.join("  ")}`)];
+  const proved = funnel.steps.filter((s) => s.state === "agent_did" || (s.state === "handoff" && s.live)).map((s) => s.name);
+  if (proved.length) out.push(...wrap(`A test proved: ${proved.join(", ")}.`, 76).map((l) => `  ${style.dim(l)}`));
+  const stop = funnel.steps.find((s) => s.id === stoppedAt) || funnel.steps.find((s) => s.id === funnel.stopsAt);
+  if (stop) out.push(...wrap(`Stops at ${stop.name}: ${label(stop.state).toLowerCase()}. ${stop.reason}`, 76).map((l) => `  ${l}`));
   return out;
 }

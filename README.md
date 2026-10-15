@@ -243,9 +243,15 @@ The checker makes that call three times: with the agent's key (must return `veri
   PASS  A real agent got its own key and the checker confirmed it works.
   11 turns · $0.37 · evidence in .agent-ready/app.tansohq.com/2026-10-05T02-35-22-et9ch3/
 
-  Keep it passing: app.tansohq.com runs this test on a schedule and emails you
-  when it breaks (5 free runs a month).
+  Keep it passing: hosted runs, on a schedule with an email when this test
+  breaks, are coming. Join the waitlist at tansohq.com.
+
+  Your product, seven steps
+  ✓ Discover  · Understand  ✓ Sign up  ✓ Access  ✓ Use  ✓ Pay  · Manage
+  A test proved: Sign up, Access.
 ```
+
+After a `check`, every `test` prints the seven steps with what your tests on this machine proved, the same steps `check` shows and the hosted product will.
 
 It works on a product running on your machine too (`url: localhost:3000` means `http://localhost:3000`; on macOS the agent's sandbox opens localhost only for a local target).
 

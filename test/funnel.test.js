@@ -70,7 +70,7 @@ test("robots.txt that blocks AI agents stops the funnel at Discover", () => {
 });
 
 test("a passed live test proves its step; a blocked one overrides public evidence; inconclusive changes nothing", async () => {
-  const { applyLiveTests } = await import("../src/interface/funnel.js");
+  const { applyLiveTests } = await import("../src/interface/evidence.js");
   const base = buildFunnel(doc());
   const runs = [
     { id: "run_a", kind: "usability", step: "signup", outcome: "blocked", summary: "CAPTCHA on the signup form.", completedAt: "2026-09-01T00:00:00Z" },
@@ -102,7 +102,7 @@ test("Use counts API operations, not OpenAPI tag groups", () => {
 });
 
 test("the headline counts every passing step and names a step a live test failed", async () => {
-  const { applyLiveTests } = await import("../src/interface/funnel.js");
+  const { applyLiveTests } = await import("../src/interface/evidence.js");
   const base = buildFunnel(doc({ onboarding: { patterns: [{ id: "try_then_claim", name: "Try first, claim later", status: "documented", humanBoundary: "After the first job.", needs: [], evidence: [{ obs: "obs_1" }] }] } }));
   const f = applyLiveTests(base, [{ id: "run_u", kind: "usability", step: "understand", outcome: "blocked", summary: "No price for Pro.", completedAt: "2026-09-02T00:00:00Z" }]);
   const passing = f.steps.filter((s) => ["agent_did", "agent_can", "handoff"].includes(s.state)).length;
@@ -120,7 +120,7 @@ test("the funnel and the schema walk the seven steps in one order, Use before Pa
 });
 
 test("stepsPassing is the count the headline says; passed stays the steps before the first stop", async () => {
-  const { applyLiveTests } = await import("../src/interface/funnel.js");
+  const { applyLiveTests } = await import("../src/interface/evidence.js");
   const f = applyLiveTests(buildFunnel(doc()), [{ id: "r", kind: "usability", step: "understand", outcome: "blocked", summary: "x", completedAt: "2026-09-02T00:00:00Z" }]);
   assert.equal(f.stepsPassing, f.documented + f.verified);
   assert.ok(f.headline.startsWith(`${f.verified} of 7 steps verified by a test. Your public pages document ${f.documented} more.`));

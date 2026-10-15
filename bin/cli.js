@@ -24,7 +24,9 @@ import { runHarness, TASKS } from "../src/harness/index.js";
 import { inspect, buildAudit, writeAudit, parseTarget, unreachableReason, DEFAULT_TASK } from "../src/audit/index.js";
 import { defaultAnswers, askQuestions, QUESTIONS } from "../src/audit/questions.js";
 import { readConfig, writeConfig, writeVerifyCall, configHost, CONFIG_FILE } from "../src/audit/config.js";
-import { makeStyle, renderVerdict, renderSteps, renderSummary, renderStandards } from "../src/audit/render.js";
+import { makeStyle, renderVerdict, renderSteps, renderSummary, renderStandards, renderStrip } from "../src/audit/render.js";
+import { localJourney, localTestRuns } from "../src/verify/journey.js";
+import { applyEvidence } from "../src/interface/evidence.js";
 import { runStandards } from "../src/audit/standards.js";
 import { parseVerifySpec, buildVerifyTask, classify, failedStep, networkFor, describeSpec } from "../src/verify/index.js";
 import { renderVerify, renderPlan, duration } from "../src/verify/render.js";
@@ -124,7 +126,10 @@ Examples:
     say(`  ${style.bold("agent-ready check")} · ${host}`);
     const live = !opts.json && Boolean(process.stderr.isTTY);
     if (live) process.stderr.write(`  ${style.dim("Reading public pages…")}`);
-    const { doc, funnel } = await inspect({ url, version: pkg.version, runId: id });
+    const inspected = await inspect({ url, version: pkg.version, runId: id });
+    const doc = inspected.doc;
+    // A step a `test` run on this machine proved reads Agent did, not what the public pages suggest.
+    const funnel = applyEvidence(inspected.funnel, { runs: localTestRuns(process.cwd(), url) });
     if (live) process.stderr.write("\r\x1b[2K");
     const unreachable = unreachableReason(doc);
     if (unreachable) fail(opts, 3, "unreachable", `Could not reach ${url}. ${unreachable}`, "Check the address and try again. Nothing was written.");
@@ -389,10 +394,17 @@ Examples:
       writeFileSync(join(out, "prompts", `01-${step}.md`), body);
       promptFile = relative(process.cwd(), join(out, "prompts", `01-${step}.md`));
     }
-    const summary = { schema: "agent-ready/verify@1", target: { url, host }, task, runId: id, outcome: verdict.outcome, reason: verdict.reason, checks: result.evaluation?.objects?.checks || [], turns: result.execution?.turns ?? null, costUsd: result.execution?.costUsd ?? null, folder: out, prompt: promptFile, checker: { call: describeSpec(spec), ...checker } };
+    const summary = { schema: "agent-ready/verify@1", target: { url, host }, task, runId: id, at: new Date().toISOString(), outcome: verdict.outcome, step: verdict.outcome === "failed" ? failedStep(result) : null, reason: verdict.reason, checks: result.evaluation?.objects?.checks || [], turns: result.execution?.turns ?? null, costUsd: result.execution?.costUsd ?? null, folder: out, prompt: promptFile, checker: { call: describeSpec(spec), ...checker } };
     writeFileSync(join(out, "verify.json"), JSON.stringify(summary, null, 2));
     if (opts.json) process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
-    else for (const line of renderVerify({ host, task, result, verdict, folder: relative(process.cwd(), out) || ".", promptFile }, style)) console.error(line);
+    else {
+      for (const line of renderVerify({ host, task, result, verdict, folder: relative(process.cwd(), out) || ".", promptFile }, style)) console.error(line);
+      // The run is on disk now, so the strip includes it.
+      const journey = localJourney(process.cwd(), url);
+      if (journey) for (const line of renderStrip(journey, style, { stoppedAt: summary.step })) console.error(line);
+      else console.error(`  ${style.dim(`Run npx @tansohq/agent-ready check ${host} to see this test on all seven steps.`)}`);
+      console.error("");
+    }
     process.exitCode = verdict.exitCode;
   });
 

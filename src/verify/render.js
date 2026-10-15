@@ -42,7 +42,7 @@ export function renderVerify({ host, task, result, verdict, folder, promptFile }
   const ran = typeof execution.durationMs === "number" ? `ran ${duration(execution.durationMs)} · ` : "";
   out.push(`  ${style.dim(`${ran}${execution.turns ?? "?"} turns${cost} · evidence in ${folder}/`)}`);
   if (promptFile) out.push("", `  ${style.bold("Next")}  paste ${promptFile} into your coding agent,`, `        then deploy, run ${style.bold(`npx @tansohq/agent-ready check ${host}`)} again,`, "        and test again");
-  else if (verdict.outcome === "passed" || verdict.outcome === "handoff") out.push("", ...wrap("Keep it passing: app.tansohq.com runs this test on a schedule and emails you when it breaks (5 free runs a month).", 76).map((l) => `  ${style.dim(l)}`));
+  else if (verdict.outcome === "passed" || verdict.outcome === "handoff") out.push("", ...wrap("Keep it passing: hosted runs, on a schedule with an email when this test breaks, are coming. Join the waitlist at tansohq.com.", 76).map((l) => `  ${style.dim(l)}`));
   out.push("");
   return out;
 }

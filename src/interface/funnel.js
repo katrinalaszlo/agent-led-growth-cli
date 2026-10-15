@@ -1,5 +1,6 @@
 import { STAGES, PILLAR } from "../schema/stages.js";
 import { AGENTID_NEEDS } from "./onboarding.js";
+import { PASSING } from "../dashboard/strip.js";
 
 // The seven-step answer for one public check: how far an agent can get, where it stops, and what to build.
 // Rule-based over the interface document only. Public evidence can show a path is documented; only a live
@@ -8,7 +9,6 @@ export const FUNNEL_SCHEMA = "agent-ready/funnel@1";
 // handoff: a person steps in at a documented point and the agent carries on. That is a working path, not a failure.
 // agent_did: a live test proved the step. Only a live test sets it.
 export const STEP_STATES = ["agent_did", "agent_can", "handoff", "needs_person", "blocked", "not_checked"];
-const PASSING = new Set(["agent_did", "agent_can", "handoff"]);
 // Kept under this name for callers; the order itself lives in schema/stages.js.
 export const FUNNEL_ORDER = STAGES;
 
@@ -32,7 +32,7 @@ export const STEP_QUESTION = {
   manage: "Can it change a plan or a limit?",
 };
 
-const FIX = {
+export const FIX = {
   discover: "Allow AI agents in robots.txt and publish /llms.txt that links to your docs.",
   understand: "Publish every plan and price in /pricing.json, and keep \"contact us\" off plans an agent should be able to buy.",
   signup: "Add one API call that creates an account and returns a key, with no CAPTCHA or email loop. Let a person claim it later.",
@@ -217,7 +217,7 @@ export function buildFunnel(doc) {
 // that does not pass, and whether that step is a real stop or only unproven.
 // The headline keeps two counts apart: steps the public pages document (agent_can, handoff) and steps a test with a
 // real agent verified (agent_did). Reading pages is not running a task, so a check alone never says a step works.
-function summarize(steps) {
+export function summarize(steps) {
   const firstOpen = steps.findIndex((x) => !PASSING.has(x.state));
   const passed = firstOpen === -1 ? steps.length : firstOpen;
   const stop = steps.find((x) => x.state === "blocked" || x.state === "needs_person") || null;
@@ -234,26 +234,4 @@ function headlineFor(steps, documented, verified) {
   if (documented) parts.push(`Your public pages document ${documented} more.`);
   if (failed.length) parts.push(`${listNames(failed)} failed a test.`);
   return parts.join(" ");
-}
-
-// A live test outranks anything read from public pages: the latest passed or blocked
-// test for a step decides it. Inconclusive tests and pauses for a person change nothing.
-export function applyLiveTests(funnel, runs) {
-  const latest = new Map();
-  for (const run of runs || []) {
-    if (!STAGES.includes(run.step) || !["passed", "blocked"].includes(run.outcome)) continue;
-    const at = run.completedAt || run.updatedAt || "";
-    const previous = latest.get(run.step);
-    if (!previous || at > (previous.completedAt || previous.updatedAt || "")) latest.set(run.step, run);
-  }
-  if (!latest.size) return funnel;
-  const steps = funnel.steps.map((step) => {
-    const run = latest.get(step.id);
-    if (!run) return step;
-    const live = { runId: run.id, name: run.flowName || run.name || "Test", outcome: run.outcome, at: run.completedAt || run.updatedAt || null };
-    const { fix, ...rest } = step;
-    if (run.outcome === "passed") return { ...rest, state: "agent_did", reason: `The agent did this step: ${live.name} passed its check.`, live };
-    return { ...rest, state: "blocked", reason: `The agent was stopped here: ${run.summary || live.name}`, fix: FIX[step.id], live };
-  });
-  return { ...funnel, ...summarize(steps), steps };
 }

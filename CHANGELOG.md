@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.16 (2026-10-15)
+
+- `test` prints the seven steps after its verdict, the same strip the hosted product draws: the newest `check` of the product on this machine with every local `test` applied ("Your product, seven steps", a mark per step, which steps a test proved and where the agent stops). With no check on this machine yet, it says to run one. `check` marks a step a local test proved as Agent did, `from your test`.
+- `verify.json` records `at` (when the run finished) and `step` (the step a failed run stopped at, `signup` or `access`).
+- After a pass, `test` no longer says app.tansohq.com runs tests on a schedule: hosted runs are coming, and it points at the waitlist on tansohq.com.
+- app.tansohq.com: every kind of run fills in the same seven steps. Test runs, payment runs, the product's own signals and stuck reports apply to a product's funnel, each step carrying `evidence`, newest first. `GET /v1/products/:host` (`agent-ready/product@1`) answers everything a workspace knows about one product. The dashboard's product page shows the strip with the stopped step marked, one column per step with its evidence, and the product's saved tests and stuck reports; the sidebar is Products, Docs, Account.
+
 ## 0.4.15 (2026-10-15)
 
 - `test` shows a clock while the agent works ("Agent working · 7 actions · 1 min 42 s") and the verdict line says how long the run took ("ran 1 min 42 s · 12 turns · $0.41"), the same units as the dashboard. `check` prints "Read 1 public page" for one page. The help for `check` says it is free and sends GET requests only; the help for `test` says it is your Claude Code, creates a real account on your product, spends your model use capped at $5, and asks before it starts.

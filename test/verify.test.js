@@ -418,7 +418,7 @@ describe("verify: output", () => {
     const result = { evaluation: { checks: [{ id: "credential_acquired", pass: true }], objects: { checks: [{ label: "Key works", pass: true, detail: "200" }] } }, execution: { turns: 9, costUsd: 0.2 } };
     const style = makeStyle(false);
     const passed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "passed", reason: "ok" }, folder: ".agent-ready/x", promptFile: null }, style);
-    assert.match(passed.join("\n"), /Keep it passing: app\.tansohq\.com runs this test on a schedule and emails you\s+when it breaks \(5 free runs a month\)\./);
+    assert.match(passed.join("\n"), /Keep it passing: hosted runs, on a schedule with an email when this test\s+breaks, are coming\. Join the waitlist at tansohq\.com\./);
     const failed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "failed", reason: "no" }, folder: ".agent-ready/x", promptFile: "prompts/01-signup.md" }, style);
     assert.match(failed.join("\n"), /then deploy, run npx @tansohq\/agent-ready check example\.com again,\n {8}and test again/);
     assert.doesNotMatch(failed.join("\n"), /Keep it passing/);

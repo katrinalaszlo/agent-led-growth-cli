@@ -11,8 +11,10 @@ export const AUDIT_SCHEMA = "agent-ready/audit-report@1";
 export const DEFAULT_TASK = "Sign up, get an API key, and make one authenticated read call";
 
 // How each step's state was found. observed: read from a structured file or an HTTP status. heuristic: matched in page
-// text. not_checked: public pages cannot show it. An audit never reports verified; only a real agent run can.
+// text. not_checked: public pages cannot show it. tested: a `test` run on this machine set it, the only way a step
+// reads Agent did.
 export function basisFor(step, doc) {
+  if (step.live) return "tested";
   if (step.state === "not_checked") return "not_checked";
   if (step.id === "discover") return "observed";
   if (step.id === "understand") return doc.pricing?.agentCanDetermineCost?.verdict === "yes" ? "observed" : "heuristic";
@@ -23,7 +25,8 @@ export function basisFor(step, doc) {
 }
 
 const SEVERITY = { blocked: "high", needs_person: "medium" };
-export const PASSING = new Set(["agent_did", "agent_can", "handoff"]);
+export { PASSING } from "../dashboard/strip.js";
+import { PASSING } from "../dashboard/strip.js";
 
 // The product name from the page title, which often carries a tagline ("Resend · Email for developers",
 // "Home \ Anthropic"). Keep the segment that names the host; otherwise the first one.
