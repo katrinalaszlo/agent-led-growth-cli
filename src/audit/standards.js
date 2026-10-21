@@ -78,10 +78,10 @@ export function shapeStandards({ result, warnings, error }, version) {
 // instead of the installed one.
 // Returns the `standards` object and the raw file's path (null when aeo-ready gave no result; its error is in
 // standards.error, never dropped).
-export async function runStandards({ url, out, timeoutMs = undefined, runAeoReady = spawnAeoReady, env = process.env }) {
+export async function runStandards({ url, out, timeoutMs = undefined, runAeoReady = spawnAeoReady, env = process.env, onChild = null }) {
   mkdirSync(out, { recursive: true });
   if (!timeoutMs && Number(env.AGENT_READY_STANDARDS_TIMEOUT_MS) > 0) timeoutMs = Number(env.AGENT_READY_STANDARDS_TIMEOUT_MS);
-  const r = await runAeoReady({ url, cwd: join(out, "vendor"), cli: env.AGENT_READY_AEO_CLI || null, ...(timeoutMs ? { timeoutMs } : {}) });
+  const r = await runAeoReady({ url, cwd: join(out, "vendor"), cli: env.AGENT_READY_AEO_CLI || null, onChild, ...(timeoutMs ? { timeoutMs } : {}) });
   const standards = shapeStandards(r, aeoReadyVersion());
   let raw = null;
   if (r.result) {

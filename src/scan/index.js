@@ -12,19 +12,31 @@ const require = createRequire(import.meta.url);
 // minutes (airbyte.com: 11), so the default kill is 15; aeo-ready's own per-benchmark deadline is 12.
 export const STANDARDS_TIMEOUT_MS = 900_000;
 
-export function runAeoReady({ url, dir, cwd, timeoutMs = STANDARDS_TIMEOUT_MS, cli = null }) {
+// Stops aeo-ready and the npx tools it spawned. A child started in its own process group (onChild below) is
+// stopped as a group, because killing aeo-ready alone leaves its npx children running.
+export function killAeoReady(child, signal = "SIGTERM") {
+  if (child.detachedGroup) process.kill(-child.pid, signal);
+  else child.kill(signal);
+}
+
+// onChild: called with the child process, for a caller that stops it itself (check on Ctrl+C). The child then runs in
+// its own process group, so a terminal's Ctrl+C reaches only the caller, which must stop it with killAeoReady.
+export function runAeoReady({ url, dir, cwd, timeoutMs = STANDARDS_TIMEOUT_MS, cli = null, onChild = null }) {
   if (!cli) cli = join(dirname(require.resolve("aeo-ready/package.json")), "bin", "cli.js");
   mkdirSync(cwd, { recursive: true });
   const args = [cli, "scan", url, "--json"];
   if (dir) args.push("--dir", dir);
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, args, { cwd, env: { ...process.env, FORCE_COLOR: "0" }, stdio: ["ignore", "pipe", "pipe"] });
+    const group = Boolean(onChild) && process.platform !== "win32";
+    const child = spawn(process.execPath, args, { cwd, env: { ...process.env, FORCE_COLOR: "0" }, stdio: ["ignore", "pipe", "pipe"], detached: group });
+    child.detachedGroup = group;
+    if (onChild) onChild(child);
     let stdout = "";
     let stderr = "";
     let killed = false;
     const timer = setTimeout(() => {
       killed = true;
-      child.kill("SIGKILL");
+      killAeoReady(child, "SIGKILL");
     }, timeoutMs);
     child.stdout.on("data", (d) => (stdout += d));
     child.stderr.on("data", (d) => (stderr += d));

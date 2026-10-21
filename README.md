@@ -88,45 +88,48 @@ npx @tansohq/agent-ready check yourproduct.com
 
 `check` reads your public pages (GET requests, nothing is submitted to your product), shows the seven steps, takes how agents should onboard from your docs or the defaults, and writes one fix prompt per gap for your coding agent (Claude Code, Cursor). It never writes your product's code.
 
-It writes `agent-ready.yml` if the folder has none. In a terminal it then asks what next: run a test now, see the plan first (free), or quit with the commands; with `--yes` or no terminal it prints the commands under Next and waits for nothing; with `--json`, stdout carries only the report.
+It writes `agent-ready.yml` if the folder has none. The answer comes first ("Not yet. Your pages don't show how an agent pays."), then the seven steps, the fixes, and Next: step 2 names the first fix prompt by its path, step 3 the test commands. The fixes and Next are written and printed before the standards catalog runs, so you can act on them during the wait; Ctrl+C then skips the catalog, keeps everything else and exits `130`. In a terminal the catalog shows its elapsed time, and the last line repeats the next step. With no fixes, a terminal then asks whether to run a test now, see the plan first (free) or quit; with `--yes` or no terminal nothing waits. With `--json`, stdout carries only the report.
 
 After the seven steps it runs the [aeo-ready](https://www.npmjs.com/package/aeo-ready) standards catalog: five third-party benchmarks of your public surface (agentic-seo, Cloudflare's isitagentready, Fern's afdocs, Vercel's agent-readability, AgentGrade), about 125 checks covering llms.txt, robots rules, markdown and content negotiation, MCP server cards, A2A agent cards, x402, UCP, ACP, AP2, Web Bot Auth, rate-limit headers and structured JSON errors. It is free, spawns `npx` for three of the benchmarks, sends your URL to isitagentready.com (Cloudflare) and AgentGrade's service, and takes usually 1-3 minutes, up to 15 on a large site (aeo-ready is killed after 15; `AGENT_READY_STANDARDS_TIMEOUT_MS` changes that), so a check takes that much longer than before; `--no-standards` skips it and the seven steps print in seconds. The catalog is theirs, not ours: aeo-ready runs `agentgrade-cli`, `agentic-seo` and `@vercel/agent-readability` unpinned through `npx`, so their checks change when those packages do, and nothing in it changes the seven-step verdict. A benchmark that did not run says why; an aeo-ready failure is printed, never hidden.
 
 ```
-  Standards  5 third-party benchmarks of your public surface (aeo-ready 1.7.9)
-             Their checks and scores; they do not change the seven steps above.
-             Sent your URL to isitagentready.com (Cloudflare) and AgentGrade's
-             service; agentic-seo, Fern and Vercel fetched your pages from here.
+  Benchmarks  optional: 5 third-party scores. Sends your URL to Cloudflare
+              and AgentGrade; --no-standards skips them.
+              Scores from aeo-ready 1.7.9; they do not change the seven steps.
+              agentic-seo, Fern and Vercel fetched your pages from here.
     · agentic-seo   no individual checks    score 63/100 C
     ✗ Cloudflare    4/21 checks passed      level 1/5 F
     ✗ Fern          12/20 checks passed     score 70/100 C
     ✗ Vercel        14/21 checks passed     score 69/100 C
     ✗ AgentGrade    31/65 checks passed     score 74/100 B
 
-  Failed checks  names as each benchmark reports them
-    Fern
-      ✗ markdown-endpoint
-      ...
+  Failed checks  66, the first names shown. All of them:
+    .agent-ready/yourproduct.com/2026-10-21T03-04-21-cfgxrw/aeo-ready.json
+    Cloudflare   17  linkHeaders, dnsAid, markdownNegotiation, +14
+    ...
 ```
 
-Scores are each benchmark's own (Cloudflare grades a level out of 5, the others out of 100). Checks a benchmark skipped are not counted; a warning counts as failed, as aeo-ready itself counts it.
+Scores are each benchmark's own (Cloudflare grades a level out of 5, the others out of 100). Failed checks get one line per benchmark: the first names that fit, then `+N`; `aeo-ready.json` in the run folder and `standards.benchmarks[].failed` in `--json` list them all. Checks a benchmark skipped are not counted; a warning counts as failed, as aeo-ready itself counts it.
+
+`check neon.com --no-standards`, October 2026:
 
 ```
   agent-ready check · neon.com
   Read 23 public pages. GET only, nothing submitted.
 
+  Not yet. Your pages don't show how an agent pays.
   Your public pages document 5 of 7 steps.
   No step has been tested yet: a test runs a real agent.
   1 needs a fix. 1 needs a test run.
 
   ✓ Discover      The site is open to agents and has an index   from your files
-                  written for them (/llms.txt with 279 links).
+                  written for them (/llms.txt with 304 links).
   ✓ Understand    Prices are written in the page text, so an    from page text
                   agent can read them, though it has to
                   interpret prose to compare plans.
   ✓ Sign up       The docs describe an agent signing up on its  from page text
-                  own (Try first, claim later). It needs:
-                  inbox.
+                  own (Try first, claim later). Needs an inbox
+                  the agent can read.
   ✓ Access        The agent signup path hands back a key the    from your files
                   agent can use.
   ✓ Use           164 API operations in a machine-readable API  from your files
@@ -137,21 +140,22 @@ Scores are each benchmark's own (Cloudflare grades a level out of 5, the others 
   · Manage        Changing a plan or a limit can only be        needs a test run
                   proven by a test run.
 
-  Onboarding  Try first, claim later (documented · defaults saved to agent-ready.yml)
-
   1 fix  a prompt for your coding agent
     01  Pay       Let an agent buy a plan without a browser checkout
+  Onboarding: Try first, claim later (documented). Change it in
+  agent-ready.yml or with --ask.
+  Files: .agent-ready/neon.com/2026-10-21T05-22-21-fa3sz3/
+         prompts/ for the fixes, brief.md for security, legal, billing
 
-  Fix   paste this prompt into your coding agent:
-        .agent-ready/neon.com/2026-10-10T00-52-29-37wa6t/prompts/01-pay.md
-        then run npx @tansohq/agent-ready check neon.com again
+  Benchmarks  skipped (--no-standards)
 
-  Folder  .agent-ready/neon.com/2026-10-10T00-52-29-37wa6t/
-          prompts/ for the fixes · brief.md for security, legal, billing
-
-  Next  When the fixes are in, a test shows whether a real agent can do the steps.
-        npx @tansohq/agent-ready test --check   see the plan (free, runs nothing)
-        npx @tansohq/agent-ready test           run it: your Claude Code signs up for real
+  Next  Step 2 of 3: fix. Paste a prompt into your coding agent, deploy,
+        then check again:
+        .agent-ready/neon.com/2026-10-21T05-22-21-fa3sz3/prompts/01-pay.md
+        npx @tansohq/agent-ready check neon.com
+  Then  Step 3 of 3: test.
+        npx @tansohq/agent-ready test --check   the plan, free
+        npx @tansohq/agent-ready test           real signup, uses your Claude Code
 ```
 
 The right-hand column says how each step was found: `from your files` (a structured file or an HTTP status), `from page text` (matched in prose, so it can be wrong), or `needs a test run` (public pages cannot show it). A check never reports a step as verified; only a test with a real agent can.
@@ -171,7 +175,7 @@ Each run writes `.agent-ready/<host>/<runId>/` with `audit-report.json`, `interf
 | `--no-standards` | Skip the aeo-ready standards catalog. Without it a check spawns `npx` and takes usually 1-3 minutes longer, up to 15 on a large site; still free. |
 | `--no-color` | Plain output. `NO_COLOR` is respected too. |
 
-Exit codes: `0` done, `1` fixes at or above `--fail-on`, `2` usage error, a malformed address, or `--ask` without a terminal, `3` the site did not answer (no DNS record, refused, timeout or a 5xx; nothing is written), `130` cancelled at a question.
+Exit codes: `0` done, `1` fixes at or above `--fail-on`, `2` usage error, a malformed address, or `--ask` without a terminal, `3` the site did not answer (no DNS record, refused, timeout or a 5xx; nothing is written), `130` cancelled at a question, or Ctrl+C during the standards catalog (the fixes and `audit-report.json` are already written, without `standards`).
 
 In CI: `npx @tansohq/agent-ready check $URL --fail-on high --json`, with `agent-ready.yml` committed.
 

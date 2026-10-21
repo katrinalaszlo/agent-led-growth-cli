@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildInterface } from "../interface/index.js";
 import { buildFunnel } from "../interface/funnel.js";
@@ -172,7 +172,10 @@ export function writeAudit({ audit, doc, out }) {
   }
   if (bodies.length) writeFileSync(join(promptsDir, "ALL.md"), bodies.join("\n---\n\n"));
   writeFileSync(join(out, "interface.json"), JSON.stringify(doc, null, 2));
-  writeFileSync(join(out, "audit-report.json"), JSON.stringify(audit, null, 2));
+  // check writes the report before the benchmarks and again after them; through a temporary file and a rename, a
+  // reader never sees half of it.
+  writeFileSync(join(out, "audit-report.json.tmp"), JSON.stringify(audit, null, 2));
+  renameSync(join(out, "audit-report.json.tmp"), join(out, "audit-report.json"));
   writeFileSync(join(out, "brief.md"), renderBrief(audit, doc));
   return { folder: out, promptsDir, brief: join(out, "brief.md"), json: join(out, "audit-report.json") };
 }

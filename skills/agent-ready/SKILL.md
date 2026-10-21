@@ -21,7 +21,7 @@ npx @tansohq/agent-ready check <url> --json --yes
 - `--json` prints one JSON document (`agent-ready/audit-report@1`) to stdout. Read `headline`, `steps` (each has `name`, `state`, `basis` and `reason`), `findings` (each has `step`, `title`, `severity` and `reason`) and `files`.
 - `standards` (absent with `--no-standards`) is the aeo-ready catalog: `benchmarks` (each has `name`, `score`, `maxScore`, `grade`, `passed`, `total`, `failed` with the failed checks' names, and `error` when that benchmark did not run) and a top-level `error` when aeo-ready itself did not run. These are the benchmarks' own checks and scores; they never change `headline`, `steps` or `findings`. aeo-ready runs `agentgrade-cli` and two other tools unpinned through `npx`, so the catalog changes when they do.
 - `check` never asks the three onboarding questions unless `--ask` is passed. It uses the answers in `agent-ready.yml`, or what the docs describe, or the defaults, and writes them to `agent-ready.yml` in the current directory if that file does not exist. It never overwrites one. `--yes` skips the offer to run a test next.
-- Exit codes: `0` done, `1` a fix at or above `--fail-on` was found, `2` usage error, `3` the site did not answer. Errors print `agent-ready/error@1` as `{ error: { code, message, hint } }`; tell the developer the message and the hint.
+- Exit codes: `0` done, `1` a fix at or above `--fail-on` was found, `2` usage error, `3` the site did not answer, `130` interrupted (with `--ask`, at a question; otherwise during the standards catalog, after the fixes were written). Errors print `agent-ready/error@1` as `{ error: { code, message, hint } }`; tell the developer the message and the hint.
 
 ## The three questions
 

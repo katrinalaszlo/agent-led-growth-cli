@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { shapeStandards, runStandards, aeoReadyVersion } from "../src/audit/standards.js";
 import { makeStyle, renderStandards } from "../src/audit/render.js";
-import { runAeoReady, STANDARDS_TIMEOUT_MS } from "../src/scan/index.js";
+import { runAeoReady, killAeoReady, STANDARDS_TIMEOUT_MS } from "../src/scan/index.js";
 import { AEO_RESULT, writeFakeAeoCli } from "./standards-fixtures.js";
 
 const plain = makeStyle(false);
@@ -103,23 +103,33 @@ describe("standards: shaping aeo-ready's result", () => {
 describe("standards: terminal section", () => {
   it("one line per benchmark, then the failed checks by benchmark, and a sentence that the steps are not changed", () => {
     const text = renderStandards(shapeStandards(ran, "1.7.9"), plain).join("\n");
-    assert.match(text, /Standards {2}5 third-party benchmarks of your public surface \(aeo-ready 1\.7\.9\)/);
-    assert.match(text, /they do not change the seven steps above\./);
-    assert.match(text, /Sent your URL to isitagentready\.com \(Cloudflare\) and AgentGrade's\n {13}service; agentic-seo, Fern and Vercel fetched your pages from here\./);
-    assert.match(text, /Runs one catalog at a time; for many products use --no-standards\n {13}and run the catalog later\./);
+    // What it sends is said before it runs (renderStandardsStart); the results say what the scores are.
+    assert.match(text, /Scores from aeo-ready 1\.7\.9; they do not change the seven steps\./);
+    assert.match(text, /agentic-seo, Fern and Vercel fetched your pages from here\./);
     assert.match(text, /✓ Cloudflare {4}2\/2 checks passed {7}level 1\/5 F/);
     assert.match(text, /✗ Fern {10}1\/3 checks passed {7}score 70\/100 C/);
     assert.match(text, /· agentic-seo {3}no individual checks {4}score 63\/100 C/);
     assert.match(text, /· Vercel {8}did not run: @vercel\/agent-readability timed out after 60s/);
-    assert.match(text, /Failed checks {2}names as each benchmark reports them\n {4}Fern\n {6}✗ llms-txt-size\n {6}✗ markdown-endpoint\n {4}AgentGrade\n {6}✗ MCP endpoint responds\n {6}✗ A2A agent card/);
+    assert.match(text, /Failed checks {2}4\n {4}Fern {10}2 {2}llms-txt-size, markdown-endpoint\n {4}AgentGrade {4}2 {2}MCP endpoint responds, A2A agent card\n/);
     assert.doesNotMatch(text, /Tools listed/, "passing checks are not listed");
     for (const line of renderStandards(shapeStandards(ran, "1.7.9"), plain)) assert.ok(line.length <= 80, line);
   });
 
+  it("failed checks: one line per benchmark, the first names that fit and +N, and where all of them are", () => {
+    const standards = shapeStandards(ran, "1.7.9");
+    const fern = standards.benchmarks.find((b) => b.id === "fern");
+    fern.failed = Array.from({ length: 18 }, (_, i) => `a-long-check-name-${i + 1}`);
+    const lines = renderStandards(standards, plain, ".agent-ready/acme.com/run/aeo-ready.json");
+    const text = lines.join("\n");
+    assert.match(text, /Failed checks {2}20, the first names shown\. All of them:\n {4}\.agent-ready\/acme\.com\/run\/aeo-ready\.json\n/);
+    assert.match(text, /\n {4}Fern {9}18 {2}a-long-check-name-1, a-long-check-name-2, \+16\n/);
+    for (const line of lines) assert.ok(line.length <= 80, line);
+  });
+
   it("prints aeo-ready's error when it did not run, and says so when it was skipped", () => {
     const failed = renderStandards(shapeStandards({ result: null, warnings: [], error: "aeo-ready exited 1 without JSON" }, "1.7.9"), plain).join("\n");
-    assert.match(failed, /Standards {2}aeo-ready did not run\. aeo-ready exited 1 without JSON/);
-    assert.equal(renderStandards(null, plain)[0], "  Standards  skipped (--no-standards)");
+    assert.match(failed, /^ {14}aeo-ready did not run\. aeo-ready exited 1 without JSON/);
+    assert.equal(renderStandards(null, plain)[0], "  Benchmarks  skipped (--no-standards)");
   });
 });
 
@@ -139,6 +149,25 @@ describe("standards: runAeoReady", () => {
     assert.equal(r.error, "aeo-ready exited 1 without JSON: Warning: no network");
   });
 
+  it("with onChild, killAeoReady stops aeo-ready and the processes it started, as check does on Ctrl+C", { skip: process.platform === "win32" }, async () => {
+    const dir = mkdtempSync(join(tmpdir(), "standards-"));
+    const pidFile = join(dir, "grandchild.pid");
+    const cli = join(dir, "spawns.mjs");
+    // Stands in for aeo-ready running npx: a grandchild that would outlive a kill of its parent alone.
+    writeFileSync(cli, `import { spawn } from "node:child_process"; import { writeFileSync } from "node:fs";
+const g = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+writeFileSync(${JSON.stringify(pidFile)}, String(g.pid)); setTimeout(() => {}, 60000);\n`);
+    let child = null;
+    const run = runAeoReady({ url: "https://acme.dev/", cwd: join(dir, "vendor"), cli, timeoutMs: 20000, onChild: (c) => (child = c) });
+    while (!existsSync(pidFile)) await new Promise((r) => setTimeout(r, 20));
+    const grandchild = Number(readFileSync(pidFile, "utf8"));
+    killAeoReady(child);
+    const r = await run;
+    assert.match(r.error, /killed by SIGTERM/);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.throws(() => process.kill(grandchild, 0), { code: "ESRCH" }, "the grandchild was stopped too");
+  });
+
   it("the default kill is 15 minutes", () => {
     assert.equal(STANDARDS_TIMEOUT_MS, 900_000);
   });
@@ -149,7 +178,7 @@ describe("standards: runStandards", () => {
     const out = join(mkdtempSync(join(tmpdir(), "standards-")), "run");
     const calls = [];
     const { standards, raw } = await runStandards({ url: "https://acme.dev/", out, env: { AGENT_READY_AEO_CLI: "/x/cli.js" }, runAeoReady: async (args) => (calls.push(args), ran) });
-    assert.deepEqual(calls, [{ url: "https://acme.dev/", cwd: join(out, "vendor"), cli: "/x/cli.js" }]);
+    assert.deepEqual(calls, [{ url: "https://acme.dev/", cwd: join(out, "vendor"), cli: "/x/cli.js", onChild: null }]);
     assert.equal(raw, join(out, "aeo-ready.json"));
     assert.deepEqual(JSON.parse(readFileSync(raw, "utf8")), AEO_RESULT);
     assert.equal(standards.generator.version, aeoReadyVersion());

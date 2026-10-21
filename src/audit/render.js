@@ -27,6 +27,16 @@ export function wrap(text, width) {
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
+// The answer to "can an agent do it?", before the tally: which steps the pages leave an agent without.
+const DOES = { discover: "finds you", understand: "understands what you sell", signup: "signs up", access: "gets a key", use: "uses the product", pay: "pays", manage: "changes a plan" };
+export function renderAnswer(audit, style) {
+  const steps = [...new Set(audit.findings.map((f) => f.step))];
+  if (!steps.length) return [`  ${style.bold("No gaps in your pages. Only a test shows an agent can do it.")}`];
+  const verbs = steps.map((s) => DOES[s] || s);
+  const list = verbs.length === 1 ? verbs[0] : `${verbs.slice(0, -1).join(", ")} or ${verbs[verbs.length - 1]}`;
+  return wrap(`Not yet. Your pages don't show how an agent ${list}.`, 76).map((line) => `  ${style.bold(line)}`);
+}
+
 // A tally, not a walk: a missing llms.txt does not make every later step fail.
 export function renderVerdict(audit, style) {
   const unchecked = audit.steps.filter((s) => s.state === "not_checked").length;
@@ -53,40 +63,64 @@ export function renderSteps(audit, style) {
   return out;
 }
 
-// savedTo: the config file the answers were saved to or read from this run, or null.
+// The fixes, the onboarding model they build toward, and where the files are. savedTo: the config file the answers
+// were saved to or read from this run, or null.
 export function renderSummary(audit, paths, style, relative, savedTo) {
-  const where = savedTo ? ` · ${savedTo}` : "";
-  const out = ["", `  ${style.bold("Onboarding")}  ${audit.onboarding.chosen.name} ${style.dim(`(${audit.onboarding.chosen.source}${where})`)}`];
-  // Nobody picked it this run, so say how to change it: it shapes the fix prompts.
-  if (!["asked", "flag"].includes(audit.onboarding.chosen.source)) out.push(`              ${style.dim("Not right? Change onboarding in agent-ready.yml, or run check with --ask.")}`);
-  if (!audit.findings.length) {
-    out.push("", `  ${style.bold("No fixes from public pages.")}`);
-  } else {
-    out.push("", `  ${style.bold(plural(audit.findings.length, "fix", "fixes"))}  ${style.dim(audit.findings.length === 1 ? "a prompt for your coding agent" : "one prompt each, for your coding agent")}`);
+  const out = [""];
+  if (!audit.findings.length) out.push(`  ${style.bold("No fixes from public pages.")}`);
+  else {
+    out.push(`  ${style.bold(plural(audit.findings.length, "fix", "fixes"))}  ${style.dim(audit.findings.length === 1 ? "a prompt for your coding agent" : "one prompt each, for your coding agent")}`);
     for (const f of audit.findings) {
       const high = f.severity === "high" ? `  ${style.red("high")}` : "";
       out.push(`    ${style.bold(String(f.n).padStart(2, "0"))}  ${f.name.padEnd(10)}${f.title}${high}`);
     }
-    out.push("", `  ${style.bold("Fix")}   paste this prompt into your coding agent:`, `        ${relative(paths.promptsDir)}/${audit.findings[0].file}`, `        then run ${style.bold(`npx @tansohq/agent-ready check ${audit.target.host}`)} again`);
   }
-  out.push("", `  ${style.dim(`Folder  ${relative(paths.folder)}/`)}`, `  ${style.dim(`        ${audit.findings.length ? "prompts/ for the fixes · " : ""}brief.md for security, legal, billing`)}`, "");
+  // Nobody picked it this run, so say how to change it: it shapes the fix prompts.
+  const change = ["asked", "flag"].includes(audit.onboarding.chosen.source) ? (savedTo ? ` Saved to agent-ready.yml.` : "") : " Change it in agent-ready.yml or with --ask.";
+  out.push(...wrap(`Onboarding: ${audit.onboarding.chosen.name} (${audit.onboarding.chosen.source}).${change}`, 76).map((line) => `  ${style.dim(line)}`));
+  out.push(`  ${style.dim(`Files: ${relative(paths.folder)}/`)}`, `  ${style.dim(`       ${audit.findings.length ? "prompts/ for the fixes, " : ""}brief.md for security, legal, billing`)}`, "");
   return out;
 }
 
-// The aeo-ready catalog: one line per benchmark, then the failed checks by benchmark, name only. Their scores are
-// the benchmarks' own (Cloudflare grades a level out of 5, the others out of 100); the seven steps above are not
-// changed by any of it. standards: the audit's `standards` field, or null when --no-standards skipped it.
-export function renderStandards(standards, style) {
-  if (!standards) return [`  ${style.bold("Standards")}  skipped (--no-standards)`, ""];
-  const head = `  ${style.bold("Standards")}  `;
-  if (!standards.benchmarks.length) return [`${head}${style.red("aeo-ready did not run.")} ${standards.error}`, ""];
+// What to do next, as the README's three steps: 1 check, 2 fix, 3 test. With fixes, step 2 names the first prompt
+// by its full path, so it can be copied; the test commands follow for later.
+const TEST_CMD = "npx @tansohq/agent-ready test";
+export function renderNext(audit, paths, style, relative) {
+  const test = [
+    `        ${style.bold(`${TEST_CMD} --check`)}   the plan, free`,
+    `        ${style.bold(TEST_CMD)}           real signup, uses your Claude Code`,
+  ];
+  if (!audit.findings.length) return [`  ${style.bold("Next")}  Step 3 of 3: test. A real agent does the steps.`, ...test, ""];
+  return [
+    `  ${style.bold("Next")}  Step 2 of 3: fix. Paste a prompt into your coding agent, deploy,`,
+    "        then check again:",
+    `        ${relative(paths.promptsDir)}/${audit.findings[0].file}`,
+    `        ${style.bold(`npx @tansohq/agent-ready check ${audit.target.host}`)}`,
+    `  ${style.bold("Then")}  Step 3 of 3: test.`,
+    ...test,
+    "",
+  ];
+}
+
+// While the catalog runs: what it is and what it sends. The elapsed time goes on the line after, from the caller.
+export function renderStandardsStart(style) {
+  return [
+    `  ${style.bold("Benchmarks")}  optional: 5 third-party scores. Sends your URL to Cloudflare`,
+    `              and AgentGrade; --no-standards skips them.`,
+  ];
+}
+
+// The aeo-ready catalog: one line per benchmark, then the failed checks, one line per benchmark with the first names
+// that fit and a count of the rest; every name is in aeo-ready.json (file). Their scores are the benchmarks' own
+// (Cloudflare grades a level out of 5, the others out of 100); the seven steps above are not changed by any of it.
+// standards: the audit's `standards` field, or null when --no-standards skipped it.
+export function renderStandards(standards, style, file = null) {
+  if (!standards) return [`  ${style.bold("Benchmarks")}  skipped (--no-standards)`, ""];
+  const indent = "              ";
+  if (!standards.benchmarks.length) return [`${indent}${style.red("aeo-ready did not run.")} ${standards.error}`, ""];
   const out = [
-    `${head}${standards.benchmarks.length} third-party benchmarks of your public surface ${style.dim(`(aeo-ready ${standards.generator.version})`)}`,
-    `             Their checks and scores; they do not change the seven steps above.`,
-    `             ${style.dim("Sent your URL to isitagentready.com (Cloudflare) and AgentGrade's")}`,
-    `             ${style.dim("service; agentic-seo, Fern and Vercel fetched your pages from here.")}`,
-    `             ${style.dim("Runs one catalog at a time; for many products use --no-standards")}`,
-    `             ${style.dim("and run the catalog later.")}`,
+    `${indent}Scores from aeo-ready ${standards.generator.version}; they do not change the seven steps.`,
+    `${indent}${style.dim("agentic-seo, Fern and Vercel fetched your pages from here.")}`,
   ];
   for (const b of standards.benchmarks) {
     const name = b.name.padEnd(12);
@@ -100,10 +134,17 @@ export function renderStandards(standards, style) {
     out.push(`    ${mark} ${name}  ${counts.padEnd(22)}  ${style.dim(score)}`);
   }
   const failing = standards.benchmarks.filter((b) => b.failed.length);
-  if (failing.length) out.push("", `  ${style.bold("Failed checks")}  ${style.dim("names as each benchmark reports them")}`);
+  if (failing.length) {
+    const count = failing.reduce((n, b) => n + b.failed.length, 0);
+    out.push("", `  ${style.bold("Failed checks")}  ${count}${file ? ", the first names shown. All of them:" : ""}`);
+    if (file) out.push(`    ${style.dim(file)}`);
+  }
   for (const b of failing) {
-    out.push(`    ${style.bold(b.name)}`);
-    for (const name of b.failed) out.push(`      ${style.red("✗")} ${name}`);
+    const lead = `    ${b.name.padEnd(12)} ${String(b.failed.length).padStart(2)}  `;
+    let shown = 1;
+    const line = (n) => b.failed.slice(0, n).join(", ") + (n < b.failed.length ? `, +${b.failed.length - n}` : "");
+    while (shown < b.failed.length && (lead + line(shown + 1)).length <= 76) shown++;
+    out.push(`${lead}${line(shown)}`);
   }
   if (standards.error) out.push("", `  ${style.red("aeo-ready:")} ${standards.error}`);
   out.push("");

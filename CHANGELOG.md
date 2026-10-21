@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.19 (2026-10-20)
+
+- `check` answers first: "Not yet. Your pages don't show how an agent signs up, gets a key or pays." (or "No gaps in your pages. Only a test shows an agent can do it."), above the headline, which is unchanged in the terminal, `--json` and `brief.md`.
+- The fixes and Next are printed, and the run folder written, before the standards catalog runs. Next follows the README's steps: "Step 2 of 3: fix" with the first prompt's path and the check command, then "Step 3 of 3: test" with `test --check` and `test`. The separate Fix, Folder and Onboarding sections are one Onboarding line and one Files line under the fixes.
+- The catalog's section is Benchmarks. In a terminal it shows elapsed time ("42 s · usually 1-3 min · Ctrl+C skips; your fixes are saved"); without one, one line. It ends with "Done in … Next: …" so the last line is the next action.
+- Ctrl+C (or SIGTERM) during the catalog stops aeo-ready and the `npx` tools it started, prints "Benchmarks skipped. Fixes saved in …", and exits `130`; before, nothing was written until the catalog finished. `audit-report.json` is written through a temporary file and a rename, before the catalog and again after it with `standards`. The 15-minute timeout now stops aeo-ready's children too.
+- Failed checks are one line per benchmark (the count, the first names that fit, `+N`) under the path of `aeo-ready.json`, which lists them all; before, one line per check, about 60 on a typical site. `--json` is unchanged.
+- The What next? menu shows only when there is nothing to fix, since then the next step is a test.
+
 ## 0.4.18 (2026-10-20)
 
 - `check` no longer asks the three onboarding questions. It uses `agent-ready.yml`, what the product's docs describe, or the recommended model, and under Onboarding says how to change the model it used ("Not right? Change onboarding in agent-ready.yml, or run check with --ask."). `--ask` asks them in the terminal; it now needs one, and exits `2` with `answers_required` without. Without a terminal and without `--yes` or answers, `check` used to exit `2` with `answers_required`; it now runs with the defaults. `--yes` only skips the offer to run a test next.

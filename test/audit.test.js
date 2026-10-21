@@ -285,7 +285,7 @@ describe("audit: command", () => {
     const r = runCli(["audit", site, "--no-standards", "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
     assert.doesNotMatch(r.stderr, /Enter to keep, or a number/);
-    assert.match(r.stderr, /Not right\? Change onboarding in agent-ready\.yml, or run check with --ask\./);
+    assert.match(r.stderr.replace(/\n\s+/g, " "), /Onboarding: .+ \(\w+\)\. Change it in agent-ready\.yml or with --ask\./);
     assert.match(readFileSync(join(cwd, "agent-ready.yml"), "utf8"), /^onboarding: /m);
   });
 
@@ -316,30 +316,37 @@ describe("audit: command", () => {
     assert.match(readFileSync(join(out, "brief.md"), "utf8"), / · checked \d{4}-\d{2}-\d{2} · /);
   });
 
-  it("ends with the commands that run a real agent, without waiting for an answer when there is no terminal", () => {
+  it("says what to do next as the README's steps, before the benchmarks, and ends on the next action", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
     const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stderr, /Next {2}When the fixes are in, a test shows whether a real agent can do the steps\./);
-    assert.match(r.stderr, /npx @tansohq\/agent-ready test --check {3}see the plan \(free, runs nothing\)/);
-    assert.match(r.stderr, /npx @tansohq\/agent-ready test {11}run it: your Claude Code signs up for real/);
-    assert.doesNotMatch(r.stderr, /Pick 1-3/);
-    // The fix prompt is "Fix"; the only "Next" is the trailing one.
-    assert.match(r.stderr, /Fix {3}paste this prompt into your coding agent:/);
+    // The answer comes first, from the steps that need a fix.
+    assert.match(r.stderr, /Not yet\. Your pages don't show how an agent /);
+    // Step 2 names the first prompt by a path that can be copied, then the test commands for later.
+    assert.match(r.stderr, /Next {2}Step 2 of 3: fix\. Paste a prompt into your coding agent, deploy,\n {8}then check again:\n {8}\S+\/prompts\/01-\w+\.md\n/);
+    assert.match(r.stderr, /Then {2}Step 3 of 3: test\./);
+    assert.match(r.stderr, /npx @tansohq\/agent-ready test --check {3}the plan, free/);
+    assert.match(r.stderr, /npx @tansohq\/agent-ready test {11}real signup, uses your Claude Code/);
     assert.equal(r.stderr.match(/Next {2}/g).length, 1);
+    // Next is printed before the catalog runs, so it can be acted on during the wait; the last line repeats it.
+    assert.ok(r.stderr.indexOf("Next  ") < r.stderr.indexOf("Benchmarks  optional"), r.stderr);
+    assert.match(r.stderr.trimEnd().split("\n").pop(), /^ {2}Done in .+\. Next: the fix prompt above, then check again\.$/);
+    // With fixes to make, nothing waits on a menu.
+    assert.doesNotMatch(r.stderr, /Pick 1-3/);
     const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "json")], cwd);
     assert.doesNotMatch(json.stdout + json.stderr, /npx @tansohq\/agent-ready test/, "--json prints only the report");
   });
 
-  it("runs the standards catalog by default: a Standards section after the folder and before Next, standards and files.standards in --json", () => {
+  it("runs the standards catalog by default: a Benchmarks section after Next, standards and files.standards in --json", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
     const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
-    const folderAt = r.stderr.indexOf("Folder  ");
-    const standardsAt = r.stderr.indexOf("Standards  5 third-party benchmarks of your public surface (aeo-ready ");
-    assert.ok(folderAt > -1 && standardsAt > folderAt && standardsAt < r.stderr.indexOf("Next  "), r.stderr);
+    const standardsAt = r.stderr.indexOf("Benchmarks  optional: 5 third-party scores. Sends your URL to Cloudflare");
+    assert.ok(standardsAt > r.stderr.indexOf("Next  "), r.stderr);
+    assert.match(r.stderr, /Running, usually 1-3 min…/, "without a terminal, one line instead of a timer");
+    assert.match(r.stderr, /Scores from aeo-ready [\d.]+; they do not change the seven steps\./);
     assert.match(r.stderr, /✗ Fern {10}1\/3 checks passed {7}score 70\/100 C/);
-    assert.match(r.stderr, /Failed checks.*\n {4}Fern\n {6}✗ llms-txt-size\n {6}✗ markdown-endpoint\n {4}AgentGrade\n {6}✗ MCP endpoint responds/);
+    assert.match(r.stderr, /Failed checks {2}\d+, the first names shown\. All of them:\n {4}\S*run\/aeo-ready\.json\n {4}Fern {10}2 {2}llms-txt-size, markdown-endpoint\n {4}AgentGrade/);
     assert.match(r.stderr, /· Vercel {8}did not run: @vercel\/agent-readability timed out after 60s/);
     assert.ok(r.stderr.indexOf("Discover") < standardsAt, "the steps come first");
     assert.ok(existsSync(join(cwd, "run", "aeo-ready.json")));
@@ -356,11 +363,35 @@ describe("audit: command", () => {
     assert.deepEqual(Object.keys(audit).slice(-2), ["standards", "files"]);
   });
 
+  it("Ctrl+C during the benchmarks stops them, keeps the fixes and exits 130", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
+    const hang = join(cwd, "hang.mjs");
+    writeFileSync(hang, "setTimeout(() => {}, 60000);\n");
+    const { spawn } = await import("node:child_process");
+    const proc = spawn(process.execPath, [CLI, "check", site, "--yes", "--out", join(cwd, "run")], { cwd, env: { ...process.env, NO_COLOR: "1", AGENT_READY_AEO_CLI: hang } });
+    let stderr = "";
+    let sent = false;
+    proc.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      if (!sent && stderr.includes("Running, usually 1-3 min")) {
+        sent = true;
+        proc.kill("SIGINT");
+      }
+    });
+    const status = await new Promise((done) => proc.on("close", done));
+    assert.equal(status, 130, stderr);
+    assert.match(stderr, /Benchmarks skipped\. Fixes saved in \S*run\//);
+    const audit = JSON.parse(readFileSync(join(cwd, "run", "audit-report.json"), "utf8"));
+    assert.ok(audit.findings.length > 0);
+    assert.ok(existsSync(join(cwd, "run", "prompts", audit.findings[0].file)));
+    assert.ok(!existsSync(join(cwd, "run", "audit-report.json.tmp")));
+  });
+
   it("--no-standards skips the catalog: no standards field, no aeo-ready.json, and the section says so", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
     const r = runCli(["check", site, "--yes", "--no-standards", "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stderr, /Standards {2}skipped \(--no-standards\)/);
+    assert.match(r.stderr, /Benchmarks {2}skipped \(--no-standards\)/);
     assert.ok(!existsSync(join(cwd, "run", "aeo-ready.json")));
     const json = runCli(["check", site, "--yes", "--json", "--no-standards", "--out", join(cwd, "j")], cwd);
     const audit = JSON.parse(json.stdout);
@@ -372,7 +403,7 @@ describe("audit: command", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
     const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd, "fail");
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stderr, /Standards {2}aeo-ready did not run\. aeo-ready exited 1 without JSON: Warning: no network/);
+    assert.match(r.stderr, /\n {14}aeo-ready did not run\. aeo-ready exited 1 without JSON: Warning: no network/);
     const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "j")], cwd, "fail");
     const audit = JSON.parse(json.stdout);
     assert.equal(audit.standards.error, "aeo-ready exited 1 without JSON: Warning: no network");

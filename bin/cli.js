@@ -8,7 +8,7 @@ import { buildReport, previousFromDir, writeReport } from "../src/report/index.j
 import { historyLine } from "../src/report/delta.js";
 import { readHistory, appendHistory } from "../src/history/index.js";
 import { validateScan, validateAudit, validateCrash, validateReport } from "../src/schema/validate.js";
-import { scan } from "../src/scan/index.js";
+import { scan, killAeoReady } from "../src/scan/index.js";
 import { smoke } from "../src/crash/smoke.js";
 import { renderDemo } from "../src/report/demo.js";
 import { renderReplay, replayFrames } from "../src/report/replay.js";
@@ -24,7 +24,7 @@ import { runHarness, TASKS } from "../src/harness/index.js";
 import { inspect, buildAudit, writeAudit, parseTarget, unreachableReason, DEFAULT_TASK } from "../src/audit/index.js";
 import { defaultAnswers, askQuestions, QUESTIONS } from "../src/audit/questions.js";
 import { readConfig, writeConfig, writeVerifyCall, configHost, CONFIG_FILE } from "../src/audit/config.js";
-import { makeStyle, renderVerdict, renderSteps, renderSummary, renderStandards, renderStrip } from "../src/audit/render.js";
+import { makeStyle, renderAnswer, renderVerdict, renderSteps, renderSummary, renderNext, renderStandardsStart, renderStandards, renderStrip } from "../src/audit/render.js";
 import { localJourney, localTestRuns } from "../src/verify/journey.js";
 import { applyEvidence } from "../src/interface/evidence.js";
 import { runStandards } from "../src/audit/standards.js";
@@ -169,77 +169,93 @@ Examples:
 
     const audit = buildAudit({ doc, funnel, answers, task, runId: id, version: pkg.version });
     say("");
+    for (const line of renderAnswer(audit, style)) say(line);
     for (const line of renderVerdict(audit, style)) say(line);
     say("");
     for (const line of renderSteps(audit, style)) say(line);
-    // The verdict and the steps are on screen before the catalog runs, since it takes minutes. The audit is written
-    // after it, so audit-report.json carries `standards` too.
-    let standardsFile = null;
-    if (opts.standards) {
-      if (live) process.stderr.write(`\n  ${style.dim("Running the standards catalog: aeo-ready spawns npx, usually 1-3 minutes, up to 15 on a large site…")}`);
-      const { standards, raw } = await runStandards({ url, out });
-      if (live) process.stderr.write("\r\x1b[2K");
-      audit.standards = standards;
-      standardsFile = raw;
-    }
-    const paths = writeAudit({ audit, doc, out });
+    // The fixes and the next step are written and printed before the catalog, which takes minutes: a reader can act
+    // on them while it runs, and Ctrl+C during it loses nothing. audit-report.json is written again after it, with
+    // `standards`.
+    let paths = writeAudit({ audit, doc, out });
     const rel = (p) => relative(process.cwd(), p) || ".";
-    // Where everything is, so an agent can read the prompts and the brief next without guessing paths.
-    const files = { folder: rel(paths.folder), brief: rel(paths.brief), report: rel(paths.json), prompts: audit.findings.map((f) => rel(join(paths.promptsDir, f.file))), config: existsSync(configPath) ? rel(configPath) : null, standards: standardsFile ? rel(standardsFile) : null };
-    if (opts.json) process.stdout.write(JSON.stringify({ ...audit, files }, null, 2) + "\n");
-    else {
-      for (const line of renderSummary(audit, paths, style, rel, savedTo)) say(line);
-      for (const line of renderStandards(audit.standards || null, style)) say(line);
-    }
-    if (opts.failOn && audit.findings.some((f) => FAIL_ON[opts.failOn].includes(f.severity))) process.exitCode = 1;
+    if (!opts.json) for (const line of renderSummary(audit, paths, style, rel, savedTo)) say(line);
+    // Skipped, the benchmarks get one line above Next, so Next stays the last thing on screen.
+    if (!opts.json && !opts.standards) for (const line of renderStandards(null, style)) say(line);
     // An agent-ready.yml for another product is never overwritten here, so `test` would run against that product.
     const after = readConfig(configPath);
     const configFor = after?.url ? configHost(after.url) : null;
-    if (!opts.json && configFor && configFor !== host) {
+    const otherProduct = configFor && configFor !== host;
+    if (!opts.json && otherProduct) {
       say(`  ${style.bold("Next")}  ${CONFIG_FILE} here is for ${configFor}, so test would run there.`);
       say(`        Run check in a folder for ${host},`);
       say(`        or change url (and verify_call) in ${CONFIG_FILE}.`);
       say("");
-    } else if (!opts.json) await offerTest({ audit, style, say, interactive: Boolean(process.stdin.isTTY && process.stderr.isTTY) && !opts.yes, hasConfig: existsSync(configPath) });
+    } else if (!opts.json) for (const line of renderNext(audit, paths, style, rel)) say(line);
+
+    let standardsFile = null;
+    if (opts.standards) {
+      const started = Date.now();
+      for (const line of renderStandardsStart(style)) say(line);
+      let child = null;
+      const stop = () => {
+        if (child && child.exitCode === null && child.signalCode === null) killAeoReady(child);
+        if (live) process.stderr.write("\r\x1b[2K");
+        say(`  Benchmarks skipped. Fixes saved in ${rel(paths.folder)}/`);
+        process.exit(130);
+      };
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+      const tick = () => process.stderr.write(`\r\x1b[2K              ${style.dim(`${duration(Date.now() - started)} · usually 1-3 min · Ctrl+C skips; your fixes are saved`)}`);
+      let ticker = null;
+      if (live) {
+        tick();
+        ticker = setInterval(tick, 1000);
+      } else say(`              ${style.dim("Running, usually 1-3 min…")}`);
+      const { standards, raw } = await runStandards({ url, out, onChild: (c) => (child = c) });
+      if (ticker) clearInterval(ticker);
+      process.removeListener("SIGINT", stop);
+      process.removeListener("SIGTERM", stop);
+      if (live) process.stderr.write("\r\x1b[2K");
+      audit.standards = standards;
+      standardsFile = raw;
+      paths = writeAudit({ audit, doc, out });
+      if (!opts.json) for (const line of renderStandards(standards, style, raw ? rel(raw) : null)) say(line);
+      // The last line on screen is the next action, not the benchmark table.
+      if (!opts.json) {
+        const next = otherProduct ? "" : audit.findings.length ? " Next: the fix prompt above, then check again." : ` Next: ${style.bold(`${TEST_CMD} --check`)}`;
+        say(`  Done in ${duration(Date.now() - started)}.${next}`);
+        say("");
+      }
+    }
+
+    const files = { folder: rel(paths.folder), brief: rel(paths.brief), report: rel(paths.json), prompts: audit.findings.map((f) => rel(join(paths.promptsDir, f.file))), config: existsSync(configPath) ? rel(configPath) : null, standards: standardsFile ? rel(standardsFile) : null };
+    if (opts.json) process.stdout.write(JSON.stringify({ ...audit, files }, null, 2) + "\n");
+    if (opts.failOn && audit.findings.some((f) => FAIL_ON[opts.failOn].includes(f.severity))) process.exitCode = 1;
+    // With nothing to fix, the next step is a test, and a person at a terminal can start it here.
+    const canAsk = Boolean(process.stdin.isTTY && process.stderr.isTTY) && !opts.yes && !opts.json;
+    if (canAsk && !otherProduct && !audit.findings.length && existsSync(configPath)) await offerTest({ audit, style, say });
   });
 
-// check reads public pages; test has a real agent do the steps. A person at a terminal picks what to do next and
-// can start it here. --yes, pipes and agents get the same choices as commands, and nothing waits for an answer.
+// check reads public pages; test has a real agent do the steps. With nothing to fix, a person at a terminal can
+// start one here. The same commands are printed under Next for --yes, pipes and agents, so nothing waits on them.
 const TEST_CMD = "npx @tansohq/agent-ready test";
-async function offerTest({ audit, style, say, interactive, hasConfig }) {
-  const lead = audit.findings.length ? "When the fixes are in, a test shows whether a real agent can do the steps." : "This check read your docs. A test has a real agent actually do the steps.";
-  if (!interactive || !hasConfig) {
-    say(`  ${style.bold("Next")}  ${lead}`);
-    say(`        ${style.bold(`${TEST_CMD} --check`)}   see the plan (free, runs nothing)`);
-    say(`        ${style.bold(TEST_CMD)}           run it: your Claude Code signs up for real`);
-    say("");
-    return;
-  }
-  say(`  ${lead}`);
-  say("");
+async function offerTest({ audit, style, say }) {
   say(`  ${style.bold("What next?")}`);
   say(`    ${style.bold("1")}  Run a test now    your Claude Code signs up on ${audit.target.host} for real (asks first)`);
   say(`    ${style.bold("2")}  See the plan      what a test would do, free, runs nothing`);
-  say(`    ${style.bold("3")}  Later             show the commands and quit`);
+  say(`    ${style.bold("3")}  Later             quit; the commands are under Next`);
   say("");
   const rl = createInterface({ input: process.stdin, output: process.stderr });
-  const reply = await rl.question(`  Pick 1-3 [${audit.findings.length ? 3 : 1}]: `).catch((err) => {
+  const reply = await rl.question("  Pick 1-3 [1]: ").catch((err) => {
     if (err.code === "ABORT_ERR") return "3";
     throw err;
   });
   rl.close();
-  const pick = reply.trim() || (audit.findings.length ? "3" : "1");
-  const self = fileURLToPath(import.meta.url);
-  if (pick === "1" || pick === "2") {
-    say("");
-    const run = spawnSync(process.execPath, [self, "test", ...(pick === "2" ? ["--check"] : [])], { stdio: "inherit" });
-    if (run.status) process.exitCode = run.status;
-    return;
-  }
+  const pick = reply.trim() || "1";
+  if (pick !== "1" && pick !== "2") return;
   say("");
-  say(`  ${style.bold(`${TEST_CMD} --check`)}   see the plan (free, runs nothing)`);
-  say(`  ${style.bold(TEST_CMD)}           run it: your Claude Code signs up for real`);
-  say("");
+  const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "test", ...(pick === "2" ? ["--check"] : [])], { stdio: "inherit" });
+  if (run.status) process.exitCode = run.status;
 }
 
 function parseBudget(value) {
