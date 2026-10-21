@@ -185,7 +185,7 @@ describe("audit: brief and config", () => {
     const input = new PassThrough();
     const output = new PassThrough();
     // readline drops lines typed before it asks, so each reply goes in when its prompt appears.
-    const replies = ["9", "3", "", ""];
+    const replies = ["9", "3", "not sure", "?"];
     let written = "";
     output.on("data", (b) => {
       written += b;
@@ -196,6 +196,23 @@ describe("audit: brief and config", () => {
     assert.match(written, /Pick 1 to 6, or press Enter to keep the default\./);
     assert.deepEqual(answers.onboarding, { value: "agent_is_customer", source: "asked" });
     assert.deepEqual(answers.abuse_cost, defaults.abuse_cost);
+    assert.deepEqual(answers.human_before, defaults.human_before);
+  });
+
+  it("does not ask the onboarding question when the docs document the answer", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    const replies = ["", ""];
+    let written = "";
+    output.on("data", (b) => {
+      written += b;
+      if (String(b).includes("Enter to keep, or a number: ") && replies.length) setImmediate(() => input.write(`${replies.shift()}\n`));
+    });
+    const defaults = { onboarding: { value: "limited_until_claimed", source: "documented" }, abuse_cost: { value: "low", source: "default" }, human_before: { value: "never", source: "default" } };
+    const answers = await askQuestions(defaults, { input, output, style: makeStyle(false) });
+    assert.match(written, /› Nobody yet; limited until a person claims it  \(documented; change it in agent-ready\.yml\)/);
+    assert.equal(written.split("Enter to keep, or a number: ").length - 1, 2);
+    assert.deepEqual(answers.onboarding, defaults.onboarding);
   });
 
   it("names the product from its title without the tagline", () => {

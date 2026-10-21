@@ -145,7 +145,7 @@ Examples:
     let savedTo = null;
     if (interactive) {
       say("");
-      say(`  ${style.bold("How should agents onboard?")} ${style.dim("Three questions. Enter keeps the default.")}`);
+      say(`  ${style.bold("How should agents onboard?")} ${style.dim("Not sure? Press Enter to keep the default; change it later in agent-ready.yml.")}`);
       try {
         answers = await askQuestions(answers, { style });
       } catch (err) {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.17 (2026-10-20)
+
+- `check` in a terminal no longer asks who holds the account when the product's agent-facing pages document it; it shows the documented answer, which you can change in `agent-ready.yml`. Answering "not sure", "?" or "idk" keeps a question's default instead of asking again.
+
 ## 0.4.16 (2026-10-15)
 
 - `test` prints the seven steps after its verdict, the same strip the hosted product draws: the newest `check` of the product on this machine with every local `test` applied ("Your product, seven steps", a mark per step, which steps a test proved and where the agent stops). With no check on this machine yet, it says to run one. `check` marks a step a local test proved as Agent did, `from your test`.

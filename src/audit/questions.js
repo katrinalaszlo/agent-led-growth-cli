@@ -47,6 +47,8 @@ export function optionLabel(key, value) {
   return q.options.find((o) => o.id === value)?.label || value;
 }
 
+const UNSURE = /^(\?|not sure|unsure|idk|i don'?t know|dunno)$/i;
+
 // Asks on a terminal: each option numbered, Enter keeps the default. Never called without a TTY.
 // Ctrl+C and Ctrl+D both reject with an AbortError (code ABORT_ERR); the caller reports it as a cancel.
 export async function askQuestions(defaults, { input = process.stdin, output = process.stderr, style }) {
@@ -58,17 +60,23 @@ export async function askQuestions(defaults, { input = process.stdin, output = p
     for (const q of QUESTIONS) {
       const current = defaults[q.key];
       output.write(`\n  ${style.bold(q.text)}\n`);
+      // What the product's agent-facing pages document is the answer already; asking again only invites a guess.
+      if (current.source === "documented") {
+        output.write(`  › ${optionLabel(q.key, current.value)}${style.dim("  (documented; change it in agent-ready.yml)")}\n`);
+        answers[q.key] = current;
+        continue;
+      }
       q.options.forEach((o, i) => {
         const mark = o.id === current.value ? style.bold("›") : " ";
         const note = o.id === current.value ? style.dim(`  (${current.source})`) : "";
         output.write(`  ${mark} ${i + 1}. ${o.label}${note}\n`);
       });
-      // An answer that is neither Enter nor an option number is asked again, never silently read as the default.
+      // An answer that is neither Enter, "not sure" nor an option number is asked again, never silently read as the default.
       let answer = null;
       while (!answer) {
         const reply = (await rl.question(style.dim("  Enter to keep, or a number: "), { signal: cancel.signal })).trim();
         const picked = /^\d+$/.test(reply) ? q.options[Number(reply) - 1] : null;
-        if (!reply) answer = current;
+        if (!reply || UNSURE.test(reply)) answer = current;
         else if (picked) answer = { value: picked.id, source: "asked" };
         else output.write(`  Pick 1 to ${q.options.length}, or press Enter to keep the default.\n`);
       }
