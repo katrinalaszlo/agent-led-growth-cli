@@ -9,7 +9,7 @@ description: "Check whether an AI agent can find, sign up for, get a key to, use
 
 ## If the developer asks for a test
 
-Do not run `check` in its place, and do not run `test` from this skill. Explain in one or two sentences that `test` runs a real agent that creates an account on the product and spends model money through the developer's Claude Code, then point to the `agent-ready-test` skill: in Claude Code the developer starts it by typing `/agent-ready-test`. You may run the free `npx @tansohq/agent-ready test --check --json` first and show the plan.
+Do not run `check` in its place, and do not run `test` from this skill. Explain in one or two sentences that `test` runs a real agent that creates an account on the product and spends model money through the developer's Claude Code, then point to the `agent-ready-test` skill: in Claude Code the developer starts it by typing `/agent-ready-test`. You may run the free `npx @tansohq/agent-ready test <url> --check --json` first and show the plan.
 
 ## Run it
 
@@ -44,7 +44,7 @@ The fix prompts build toward the chosen model. Say which answers you used and th
 3. Never call a step verified or confirmed: a check only reads pages. Say how each step was found (`basis`): `observed` comes from a structured file or an HTTP status, `heuristic` from matching page text (it can be wrong), and `not_checked` means public pages cannot show it. Only a test with a real agent shows a step works. `state`: `agent_can`/`agent_did` pass, `handoff` passes with one person step, `needs_person`/`blocked` are gaps, `not_checked` needs a test.
 4. After the findings, summarize `standards` in a few lines: each benchmark's passed/total and score, then the failed check names the developer asks about. Say they are third-party benchmarks and separate from the seven steps. If `standards.error` is set, tell the developer aeo-ready did not run and quote it.
 5. Give the paths in `files`: `files.prompts` (one fix prompt per finding), `files.brief` (a one-page brief for security, legal and billing), `files.config` and `files.standards` (aeo-ready's full output).
-6. Then tell the developer the next step is a test, and offer the free plan: `npx @tansohq/agent-ready test --check --json`. Do not run `test` itself; see 'If the developer asks for a test'.
+6. Then tell the developer the next step is a test, and offer the free plan: `npx @tansohq/agent-ready test <url> --check --json`. Do not run `test` itself; see 'If the developer asks for a test'.
 
 ## Fix a gap
 

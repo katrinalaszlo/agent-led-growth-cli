@@ -83,22 +83,20 @@ export function renderSummary(audit, paths, style, relative, savedTo) {
 }
 
 // What to do next, as the README's three steps: 1 check, 2 fix, 3 test. With fixes, step 2 names the first prompt
-// by its full path, so it can be copied; the test commands follow for later.
-const TEST_CMD = "npx @tansohq/agent-ready test";
+// by its full path, so it can be copied; the test commands follow for later. They name the product, so test runs on
+// it whatever agent-ready.yml the folder holds.
 export function renderNext(audit, paths, style, relative) {
-  const test = [
-    `        ${style.bold(`${TEST_CMD} --check`)}   the plan, free`,
-    `        ${style.bold(TEST_CMD)}           real signup, uses your Claude Code`,
-  ];
-  if (!audit.findings.length) return [`  ${style.bold("Next")}  Step 3 of 3: test. A real agent does the steps.`, ...test, ""];
+  const cmd = `npx @tansohq/agent-ready test ${audit.target.host}`;
+  const test = [`        ${style.bold(`${cmd} --check`)}`, `        ${style.bold(cmd)}`, ""];
+  const step3 = "Step 3 of 3: test. The plan is free; a signup uses your Claude Code.";
+  if (!audit.findings.length) return [`  ${style.bold("Next")}  ${step3}`, ...test];
   return [
     `  ${style.bold("Next")}  Step 2 of 3: fix. Paste a prompt into your coding agent, deploy,`,
     "        then check again:",
     `        ${relative(paths.promptsDir)}/${audit.findings[0].file}`,
     `        ${style.bold(`npx @tansohq/agent-ready check ${audit.target.host}`)}`,
-    `  ${style.bold("Then")}  Step 3 of 3: test.`,
+    `  ${style.bold("Then")}  ${step3}`,
     ...test,
-    "",
   ];
 }
 

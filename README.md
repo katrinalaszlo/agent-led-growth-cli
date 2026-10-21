@@ -19,8 +19,8 @@ You get seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage), e
 **3. Test with a real agent.** Your Claude Code tries to sign up and use your product; a separate checker then calls your API with the key it got.
 
 ```bash
-npx @tansohq/agent-ready test --check   # free: shows what the run would do
-npx @tansohq/agent-ready test           # asks before it starts; creates a real account on your product
+npx @tansohq/agent-ready test yourproduct.com --check   # free: shows what the run would do
+npx @tansohq/agent-ready test yourproduct.com           # asks before it starts; creates a real account on your product
 ```
 
 A run uses your Claude Code's model time, capped at $5; October runs cost $0.06 to $0.47. `test` finds the API call that checks the key in your OpenAPI document; if there is none, it asks you to add a `verify_call` to `agent-ready.yml`.
@@ -144,18 +144,18 @@ Scores are each benchmark's own (Cloudflare grades a level out of 5, the others 
     01  Pay       Let an agent buy a plan without a browser checkout
   Onboarding: Try first, claim later (documented). Change it in
   agent-ready.yml or with --ask.
-  Files: .agent-ready/neon.com/2026-10-21T05-22-21-fa3sz3/
+  Files: .agent-ready/neon.com/2026-10-21T05-45-24-c75l1m/
          prompts/ for the fixes, brief.md for security, legal, billing
 
   Benchmarks  skipped (--no-standards)
 
   Next  Step 2 of 3: fix. Paste a prompt into your coding agent, deploy,
         then check again:
-        .agent-ready/neon.com/2026-10-21T05-22-21-fa3sz3/prompts/01-pay.md
+        .agent-ready/neon.com/2026-10-21T05-45-24-c75l1m/prompts/01-pay.md
         npx @tansohq/agent-ready check neon.com
-  Then  Step 3 of 3: test.
-        npx @tansohq/agent-ready test --check   the plan, free
-        npx @tansohq/agent-ready test           real signup, uses your Claude Code
+  Then  Step 3 of 3: test. The plan is free; a signup uses your Claude Code.
+        npx @tansohq/agent-ready test neon.com --check
+        npx @tansohq/agent-ready test neon.com
 ```
 
 The right-hand column says how each step was found: `from your files` (a structured file or an HTTP status), `from page text` (matched in prose, so it can be wrong), or `needs a test run` (public pages cannot show it). A check never reports a step as verified; only a test with a real agent can.
@@ -182,10 +182,12 @@ In CI: `npx @tansohq/agent-ready check $URL --fail-on high --json`, with `agent-
 ## Test with a real agent
 
 ```bash
-npx @tansohq/agent-ready test
+npx @tansohq/agent-ready test yourproduct.com
 ```
 
 `test` has a real agent (your local Claude Code) try the task in `agent-ready.yml` on your product. The checker then calls your API with the agent's key, with no key and with a wrong key, using `verify_call` or a call from your OpenAPI document. `check` writes the file.
+
+Named, as above, `test` uses `agent-ready.yml` only when its `url` is that product. When the file is for another product, or there is none, it says so ("Not using ~/agent-ready.yml: it is for tansohq.com."), takes the task and answers from that product's latest check in `.agent-ready/<host>/` (or the defaults), finds the call in the product's OpenAPI document and uses it for that run only: another product's `verify_call` would be sent this product's key, and that file is never changed. With no product named, `test` reads it from `agent-ready.yml` and exits `2` (`config_missing`) when there is none.
 
 With no `verify_call` in it, `test` takes the call from your OpenAPI document: it reuses the latest `interface.json` that `check` wrote in `.agent-ready/<host>/` (or reads your public pages the same way `check` does), then picks a GET that needs a key and has no required parameters, preferring paths like `/me`, `/account`, `/user` and `/whoami`, on the document's first server. When your site's own OpenAPI document has no such GET (or there is none), it tries the OpenAPI documents in JSON that your `llms.txt`, `auth.md` and other agent files link to on the same registrable domain (`app.` and `api.` hosts included), and picks one whose call reads the caller's account when it can. The header comes from the security scheme: a bearer scheme gives `Authorization: Bearer {key}`, and an API key in a header gives `<its name>: {key}`. An API key in `Authorization` takes the prefix the document gives for it (the scheme's description or `x-` fields, or an Authorization header parameter: "Prefix your key with 'Token '", "Token <key>"), for example `Authorization: Token {key}`. When no prefix is documented, or two different ones, that call is skipped for the next one. The plan names the call's API host and the document it came from. When the host is on a different site than your product, it says so: the key the agent gets is sent there. `checker.apiHost` and `checker.apiHostOffSite` carry the same in `--json`. In a terminal it asks `Will check with GET <url> on <host> (<header>) (from <document>). Use it? [Y/n]` and saves the call to `agent-ready.yml` on yes; `--yes` accepts and saves it; without either, the call is used for that run and not saved. `--json` marks it with `checker.inferred: true` and `checker.inferredFrom` (the OpenAPI document's URL) in both the plan and the result, plus `checker.inferredVia` (the page that linked it) when the document came from a link; the plan output says the same. When no operation fits (no OpenAPI document in JSON, or no GET with a bearer or header key and no required parameters), `test` exits `2` and asks for a `verify_call`.
 

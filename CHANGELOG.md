@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.20 (2026-10-20)
+
+- `test <url>` uses `agent-ready.yml` only when its `url` is that product. When the file is for another product, or there is none, it prints "Not using <path>: it is for <host>.", takes the task and answers from that product's latest check in `.agent-ready/<host>/` (or the defaults), and uses a call from the product's OpenAPI document for that run only, never saving it to that file. Before, `test valueiq.ai` in a folder with `agent-ready.yml` for tansohq.com used tansohq.com's `verify_call`, so the agent's valueiq.ai key would have been sent to tansohq.com. `config_missing` now means no product was named and there is no `agent-ready.yml`.
+- `check`'s Next names the product in the test commands (`npx @tansohq/agent-ready test valueiq.ai --check`), and the What next? menu passes it on, so a test runs on the product just checked whatever `agent-ready.yml` the folder holds. The "agent-ready.yml here is for <host>" message is gone.
+
 ## 0.4.19 (2026-10-20)
 
 - `check` answers first: "Not yet. Your pages don't show how an agent signs up, gets a key or pays." (or "No gaps in your pages. Only a test shows an agent can do it."), above the headline, which is unchanged in the terminal, `--json` and `brief.md`.

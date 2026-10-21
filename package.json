@@ -1,6 +1,6 @@
 {
   "name": "@tansohq/agent-ready",
-  "version": "0.4.19",
+  "version": "0.4.20",
   "description": "Check whether an AI agent can sign up for and use your product, get fix prompts for your coding agent, and test with a real agent.",
   "type": "module",
   "bin": {

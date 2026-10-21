@@ -324,9 +324,8 @@ describe("audit: command", () => {
     assert.match(r.stderr, /Not yet\. Your pages don't show how an agent /);
     // Step 2 names the first prompt by a path that can be copied, then the test commands for later.
     assert.match(r.stderr, /Next {2}Step 2 of 3: fix\. Paste a prompt into your coding agent, deploy,\n {8}then check again:\n {8}\S+\/prompts\/01-\w+\.md\n/);
-    assert.match(r.stderr, /Then {2}Step 3 of 3: test\./);
-    assert.match(r.stderr, /npx @tansohq\/agent-ready test --check {3}the plan, free/);
-    assert.match(r.stderr, /npx @tansohq\/agent-ready test {11}real signup, uses your Claude Code/);
+    const named = new URL(site).host.replace(/\./g, "\\.");
+    assert.match(r.stderr, new RegExp(`Then {2}Step 3 of 3: test\\. The plan is free; a signup uses your Claude Code\\.\\n {8}npx @tansohq/agent-ready test ${named} --check\\n {8}npx @tansohq/agent-ready test ${named}\\n`));
     assert.equal(r.stderr.match(/Next {2}/g).length, 1);
     // Next is printed before the catalog runs, so it can be acted on during the wait; the last line repeats it.
     assert.ok(r.stderr.indexOf("Next  ") < r.stderr.indexOf("Benchmarks  optional"), r.stderr);
@@ -454,7 +453,7 @@ describe("audit: command", () => {
     assert.equal(readFileSync(path, "utf8"), before);
   });
 
-  it("with an agent-ready.yml for another product, --yes does not offer test for it", () => {
+  it("with an agent-ready.yml for another product, check leaves it and names this product in the test commands", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
     const path = join(cwd, "agent-ready.yml");
     writeFileSync(path, "url: otherproduct.example\ntask: Sign up\nonboarding: agent_is_customer\nverify_call: GET https://api.otherproduct.example/v1/me\n");
@@ -463,8 +462,8 @@ describe("audit: command", () => {
     assert.equal(r.status, 0, r.stderr);
     assert.equal(readFileSync(path, "utf8"), before);
     const host = new URL(site).host;
-    assert.match(r.stderr, new RegExp(`Next {2}agent-ready\\.yml here is for otherproduct\\.example, so test would run there\\.\\n {8}Run check in a folder for ${host.replace(/\./g, "\\.")},\\n {8}or change url \\(and verify_call\\) in agent-ready\\.yml\\.`));
-    assert.doesNotMatch(r.stderr, /npx @tansohq\/agent-ready test/);
+    assert.ok(r.stderr.includes(`npx @tansohq/agent-ready test ${host} --check`), r.stderr);
+    assert.doesNotMatch(r.stderr, /otherproduct/);
   });
 
   it("an agent can answer every question with flags, with no terminal and no --yes", () => {

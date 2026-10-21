@@ -2,7 +2,8 @@
 import { Command, InvalidArgumentError } from "commander";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { runId as newRunId } from "../src/schema/ids.js";
-import { dirname, join, resolve, basename, relative } from "node:path";
+import { dirname, join, resolve, basename, relative, sep } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { buildReport, previousFromDir, writeReport } from "../src/report/index.js";
 import { historyLine } from "../src/report/delta.js";
@@ -30,7 +31,7 @@ import { applyEvidence } from "../src/interface/evidence.js";
 import { runStandards } from "../src/audit/standards.js";
 import { parseVerifySpec, buildVerifyTask, classify, failedStep, networkFor, describeSpec } from "../src/verify/index.js";
 import { renderVerify, renderPlan, duration } from "../src/verify/render.js";
-import { inferVerifyCall, latestInterface } from "../src/verify/infer.js";
+import { inferVerifyCall, latestInterface, latestAnswers } from "../src/verify/infer.js";
 import { renderPrompt } from "../src/audit/prompts.js";
 import { patternInfo } from "../src/audit/index.js";
 import { createInterface } from "node:readline/promises";
@@ -181,16 +182,7 @@ Examples:
     if (!opts.json) for (const line of renderSummary(audit, paths, style, rel, savedTo)) say(line);
     // Skipped, the benchmarks get one line above Next, so Next stays the last thing on screen.
     if (!opts.json && !opts.standards) for (const line of renderStandards(null, style)) say(line);
-    // An agent-ready.yml for another product is never overwritten here, so `test` would run against that product.
-    const after = readConfig(configPath);
-    const configFor = after?.url ? configHost(after.url) : null;
-    const otherProduct = configFor && configFor !== host;
-    if (!opts.json && otherProduct) {
-      say(`  ${style.bold("Next")}  ${CONFIG_FILE} here is for ${configFor}, so test would run there.`);
-      say(`        Run check in a folder for ${host},`);
-      say(`        or change url (and verify_call) in ${CONFIG_FILE}.`);
-      say("");
-    } else if (!opts.json) for (const line of renderNext(audit, paths, style, rel)) say(line);
+    if (!opts.json) for (const line of renderNext(audit, paths, style, rel)) say(line);
 
     let standardsFile = null;
     if (opts.standards) {
@@ -222,7 +214,7 @@ Examples:
       if (!opts.json) for (const line of renderStandards(standards, style, raw ? rel(raw) : null)) say(line);
       // The last line on screen is the next action, not the benchmark table.
       if (!opts.json) {
-        const next = otherProduct ? "" : audit.findings.length ? " Next: the fix prompt above, then check again." : ` Next: ${style.bold(`${TEST_CMD} --check`)}`;
+        const next = audit.findings.length ? " Next: the fix prompt above, then check again." : ` Next: ${style.bold(`${TEST_CMD} ${host} --check`)}`;
         say(`  Done in ${duration(Date.now() - started)}.${next}`);
         say("");
       }
@@ -233,7 +225,7 @@ Examples:
     if (opts.failOn && audit.findings.some((f) => FAIL_ON[opts.failOn].includes(f.severity))) process.exitCode = 1;
     // With nothing to fix, the next step is a test, and a person at a terminal can start it here.
     const canAsk = Boolean(process.stdin.isTTY && process.stderr.isTTY) && !opts.yes && !opts.json;
-    if (canAsk && !otherProduct && !audit.findings.length && existsSync(configPath)) await offerTest({ audit, style, say });
+    if (canAsk && !audit.findings.length) await offerTest({ audit, style, say });
   });
 
 // check reads public pages; test has a real agent do the steps. With nothing to fix, a person at a terminal can
@@ -254,7 +246,7 @@ async function offerTest({ audit, style, say }) {
   const pick = reply.trim() || "1";
   if (pick !== "1" && pick !== "2") return;
   say("");
-  const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "test", ...(pick === "2" ? ["--check"] : [])], { stdio: "inherit" });
+  const run = spawnSync(process.execPath, [fileURLToPath(import.meta.url), "test", audit.target.host, ...(pick === "2" ? ["--check"] : [])], { stdio: "inherit" });
   if (run.status) process.exitCode = run.status;
 }
 
@@ -301,13 +293,24 @@ Examples:
   agent-ready test --yes --json     no confirmation, JSON result (CI)`)
   .exitOverride(usageExit)
   .action(async (input, opts) => {
-    const config = readConfig(join(process.cwd(), CONFIG_FILE));
-    if (!config) fail(opts, 2, "config_missing", `No ${CONFIG_FILE} here.`, `Run "agent-ready check <url> --yes" first, which writes it.`);
-    const url = parseTarget(input || config.url);
-    if (!url) fail(opts, 2, "invalid_address", `"${input || config.url}" is not a web address.`, "Set url in agent-ready.yml, for example: url: example.com");
+    const configPath = join(process.cwd(), CONFIG_FILE);
+    const saved = readConfig(configPath);
+    if (!saved && !input) fail(opts, 2, "config_missing", `No ${CONFIG_FILE} here.`, `Name the product, as in "agent-ready test example.com", or run "agent-ready check <url> --yes" first, which writes it.`);
+    const url = parseTarget(input || saved.url);
+    if (!url) fail(opts, 2, "invalid_address", `"${input || saved.url}" is not a web address.`, "Set url in agent-ready.yml, for example: url: example.com");
     const host = new URL(url).host;
+    // agent-ready.yml is used only for the product it names: another product's verify_call would be sent this
+    // product's agent key. Otherwise the answers come from this product's latest check, or the defaults.
+    const savedFor = saved?.url && parseTarget(saved.url) ? new URL(parseTarget(saved.url)).host : null;
+    const useSaved = Boolean(saved) && (!input || savedFor === host);
+    const config = useSaved ? saved : { url: host, ...latestAnswers(process.cwd(), url) };
     const task = config.task || DEFAULT_TASK;
     const style = makeStyle(Boolean(process.stderr.isTTY) && opts.color && !process.env.NO_COLOR && !opts.json);
+    if (saved && !useSaved && !opts.json) {
+      const home = homedir();
+      const shown = configPath.startsWith(home + sep) ? `~${configPath.slice(home.length)}` : CONFIG_FILE;
+      console.error(`  ${style.dim(`Not using ${shown}: it is for ${savedFor || "no product"}.`)}`);
+    }
     const addCallHint = `Add the call that proves an agent's key works to ${CONFIG_FILE}, for example: verify_call: GET https://api.example.com/v1/me`;
     // No verify_call: take one from the product's own OpenAPI document. It is saved only once accepted, by a
     // person at the prompt or by --yes; otherwise it is used for this run alone.
@@ -317,6 +320,8 @@ Examples:
       if (live) process.stderr.write(`  ${style.dim("Finding a call that proves the agent's key works…")}`);
       inferred = await inferVerifyCall({ url, version: pkg.version, cwd: process.cwd() });
       if (live) process.stderr.write("\r\x1b[2K");
+      // For another product's file, the call goes in a file of this product's own, never in that one.
+      if (inferred.error && !useSaved) fail(opts, 2, "verify_call_invalid", `No verify_call for ${host}, and none could be taken from the product's docs: ${inferred.error}.`, `Run "agent-ready check ${host}" in a folder of its own, then add the call that proves an agent's key works to the ${CONFIG_FILE} it writes, for example: verify_call: GET https://api.example.com/v1/me`);
       if (inferred.error) fail(opts, 2, "verify_call_invalid", `${CONFIG_FILE} has no verify_call, and none could be taken from the product's docs: ${inferred.error}.`, addCallHint);
       const from = `(from ${inferred.specUrl}${inferred.specVia ? `, linked from ${inferred.specVia}` : ""})`;
       const willCheck = `Will check with ${inferred.call} on ${inferred.apiHost} (${inferred.headerName}) ${from}.`;
@@ -337,8 +342,10 @@ Examples:
         }
         accepted = true;
       } else if (!opts.json) console.error(`\n  ${willCheck}${offSiteNote}`);
-      if (accepted) {
-        writeVerifyCall(join(process.cwd(), CONFIG_FILE), inferred);
+      if (!useSaved) {
+        if (!opts.json) console.error(`  ${style.dim(`Used for this run only: ${CONFIG_FILE} here is not for ${host}.`)}`);
+      } else if (accepted) {
+        writeVerifyCall(configPath, inferred);
         if (!opts.json) console.error(`  ${style.dim(`Saved to ${CONFIG_FILE}.`)}`);
       } else if (!opts.json) console.error(`  ${style.dim(`Not saved to ${CONFIG_FILE}; pass --yes or run in a terminal to save it.`)}`);
     }

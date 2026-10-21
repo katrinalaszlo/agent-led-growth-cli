@@ -134,6 +134,20 @@ export function latestInterface(cwd, url) {
   return null;
 }
 
+// The task and answers of the product's latest check run here (its audit-report.json), as agent-ready.yml keys, or
+// {} when there is none. test uses them when agent-ready.yml is missing or for another product.
+export function latestAnswers(cwd, url) {
+  const dir = join(cwd, OUT_DIR, new URL(url).host);
+  if (!existsSync(dir)) return {};
+  for (const run of readdirSync(dir).sort().reverse()) {
+    const path = join(dir, run, "audit-report.json");
+    if (!existsSync(path)) continue;
+    const audit = JSON.parse(readFileSync(path, "utf8"));
+    return { task: audit.task, onboarding: audit.answers?.onboarding?.value, abuse_cost: audit.answers?.abuse_cost?.value, human_before: audit.answers?.human_before?.value };
+  }
+  return {};
+}
+
 // One OpenAPI document fetched and parsed, then the call picked from it, or { error, reason }. reason is the short
 // form for a list of skipped documents. A fetch that redirects to another site is refused: the document would then
 // come from a site the product never named.

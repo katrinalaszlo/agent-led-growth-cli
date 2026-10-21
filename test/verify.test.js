@@ -15,6 +15,7 @@ import { secretsInText, secretsInMail, resolveCredentials } from "../src/harness
 import { chmodSync, mkdirSync } from "node:fs";
 import { argsFor, settingsFor, run as runClaudePrint } from "../src/harness/executors/claude-print.js";
 import { readConfig, writeConfig } from "../src/audit/config.js";
+import { latestAnswers } from "../src/verify/infer.js";
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "cli.js");
 const GOOD = "ar_live_goodkey_123456";
@@ -432,7 +433,47 @@ describe("verify: command", () => {
   it("without agent-ready.yml it exits 2 and says to run check first", () => {
     const r = runCli(["verify"], mkdtempSync(join(tmpdir(), "verify-cli-")));
     assert.equal(r.status, 2);
-    assert.match(r.stderr, /Run "agent-ready check <url> --yes" first/);
+    assert.match(r.stderr, /Name the product, as in "agent-ready test example\.com", or run "agent-ready check <url> --yes" first/);
+  });
+
+  // agent-ready.yml for neon.com, with a verify_call: naming another product must never send its key there.
+  it("test <product> does not use an agent-ready.yml for another product, and leaves it unchanged", () => {
+    const { cwd, env } = checkIn(fakeClaude(true));
+    const before = readFileSync(join(cwd, "agent-ready.yml"), "utf8");
+    const r = spawnSync(process.execPath, [CLI, "test", "127.0.0.1:9", "--check"], { cwd, encoding: "utf8", env });
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stderr, /Not using agent-ready\.yml: it is for neon\.com\./);
+    assert.match(r.stderr, /No verify_call for 127\.0\.0\.1:9, and none could be taken from the product's docs/);
+    assert.match(r.stderr, /Run "agent-ready check 127\.0\.0\.1:9" in a folder of its own/);
+    assert.doesNotMatch(r.stderr, /claimable\.neon\.tech/);
+    assert.equal(readFileSync(join(cwd, "agent-ready.yml"), "utf8"), before);
+    const json = spawnSync(process.execPath, [CLI, "test", "127.0.0.1:9", "--check", "--json"], { cwd, encoding: "utf8", env });
+    assert.equal(JSON.parse(json.stdout).error.code, "verify_call_invalid");
+  });
+
+  it("test <product> uses agent-ready.yml when it is for that product", () => {
+    const { cwd, env } = checkIn(fakeClaude(true));
+    const r = spawnSync(process.execPath, [CLI, "test", "neon.com", "--check", "--json"], { cwd, encoding: "utf8", env });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(JSON.parse(r.stdout).agent.hosts.includes("claimable.neon.tech"));
+  });
+
+  it("test <product> with no agent-ready.yml looks for a call instead of stopping, and writes no file", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
+    const r = runCli(["test", "127.0.0.1:9", "--check", "--json"], cwd);
+    assert.equal(r.status, 2);
+    assert.equal(JSON.parse(r.stdout).error.code, "verify_call_invalid");
+    assert.equal(existsSync(join(cwd, "agent-ready.yml")), false);
+  });
+
+  it("latestAnswers reads the task and answers of the product's latest check, or nothing", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
+    assert.deepEqual(latestAnswers(cwd, "https://acme.dev"), {});
+    for (const [run, task] of [["2026-10-01T00-00-00-aaaaaa", "Old task"], ["2026-10-02T00-00-00-bbbbbb", "New task"]]) {
+      mkdirSync(join(cwd, ".agent-ready", "acme.dev", run), { recursive: true });
+      writeFileSync(join(cwd, ".agent-ready", "acme.dev", run, "audit-report.json"), JSON.stringify({ task, answers: { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "high" }, human_before: { value: "outbound" } } }));
+    }
+    assert.deepEqual(latestAnswers(cwd, "https://acme.dev"), { task: "New task", onboarding: "agent_is_customer", abuse_cost: "high", human_before: "outbound" });
   });
 
   // Nothing listens on port 9, so the inference finds no OpenAPI document without leaving this machine.
