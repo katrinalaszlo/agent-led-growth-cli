@@ -1,34 +1,37 @@
 # agent-ready
 
-Can an AI agent sign up for your product and use it without a person? Two commands answer it for your own product.
-
-```bash
-npx @tansohq/agent-ready check yourproduct.com   # free, reads public pages, writes fix prompts
-npx @tansohq/agent-ready test                    # a real agent tries it; a separate check decides
-```
-
-- **`check`** reads your public pages the way an agent does, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage), asks three questions about how agents should onboard, and writes one fix prompt per gap for your coding agent. It submits nothing to your product; its standards catalog sends your URL to two benchmark services (below).
-- **`test`** has a real agent (your local Claude Code) try the task on your product. The checker then calls your API with the agent's key, with no key and with a wrong key, using your `verify_call` or a call from your OpenAPI document.
-
-The loop: check, hand a fix prompt to your coding agent, deploy, check again, then test. Neither needs a Tanso account, and Tanso charges nothing for the CLI. `check` reads public pages, and its standards catalog sends your URL to Cloudflare's isitagentready.com and AgentGrade's service (`--no-standards` skips that); `test` uses your own Claude Code model time (capped at $5 by default) and creates a real account on your product. (`audit` and `verify` still work as the old names.)
+Find out whether an AI agent can sign up for your product and use it without a person, and get a fix for each step where it can't.
 
 ## Quickstart
 
-Needs Node 20.9 or later. `test` also needs [Claude Code](https://claude.com/claude-code), installed and signed in.
+Needs Node 20.9 or later. Step 3 also needs [Claude Code](https://claude.com/claude-code), installed and signed in.
 
-### In your terminal
+**1. Check your product.** Free, and it submits nothing to your product. It reads your public pages, then runs a standards catalog that sends your URL to Cloudflare's isitagentready.com and AgentGrade's service and takes 1-3 minutes; add `--no-standards` to skip that and finish in seconds.
 
 ```bash
-npx @tansohq/agent-ready check yourproduct.com   # answer three questions, or add --yes for the defaults
-npx @tansohq/agent-ready test --check            # free: checks your setup and shows what a run would do
-npx @tansohq/agent-ready test                    # asks before it starts
+npx @tansohq/agent-ready check yourproduct.com
 ```
 
-`check` writes `agent-ready.yml`. In a terminal it then asks what next: run a test now, see the plan first (free), or quit with the commands; with `--yes` or no terminal it prints the commands under Next and waits for nothing; with `--json`, stdout carries only the report. `test` takes the call that checks the agent's key from your OpenAPI document when it can, and otherwise asks you to add a `verify_call` (see [Test with a real agent](#test-with-a-real-agent)). To skip `npx`, install once with `npm i -g @tansohq/agent-ready` and run `agent-ready check …`.
+You get seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage), each marked documented, missing or needs a test, and one fix prompt per gap. It asks no questions: how agents should onboard comes from your docs, or a recommended default, and is saved to `agent-ready.yml`.
+
+**2. Fix the gaps.** Paste the prompt it names (`.agent-ready/<host>/<run>/prompts/01-….md`) into your coding agent (Claude Code, Cursor, Codex), deploy, and run `check` again.
+
+**3. Test with a real agent.** Your Claude Code tries to sign up and use your product; a separate checker then calls your API with the key it got.
+
+```bash
+npx @tansohq/agent-ready test --check   # free: shows what the run would do
+npx @tansohq/agent-ready test           # asks before it starts; creates a real account on your product
+```
+
+A run uses your Claude Code's model time, capped at $5; October runs cost $0.06 to $0.47. `test` finds the API call that checks the key in your OpenAPI document; if there is none, it asks you to add a `verify_call` to `agent-ready.yml`.
+
+At the end of a `check` in a terminal you can start step 3 from a menu. Neither command needs a Tanso account, and Tanso charges nothing for the CLI.
+
+## Other ways to run it
 
 ### With your coding agent
 
-Any agent that can run shell commands and read a web page can use it with no install. Paste this into Claude Code, Codex, Cursor or another coding agent:
+Paste this into Claude Code, Codex, Cursor or another agent that can run shell commands:
 
 ```text
 Read https://raw.githubusercontent.com/tansohq/agent-ready-cli/main/skills/agent-ready/SKILL.md and follow it to check yourproduct.com.
@@ -55,6 +58,10 @@ npx @tansohq/agent-ready check $URL --fail-on high --json   # exit 1 when a high
 
 Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `--yes --json` where Claude Code is installed and signed in (or `ANTHROPIC_API_KEY` is set). Every run creates a real account and spends model money, so run it there only on purpose.
 
+### Installed
+
+`npm i -g @tansohq/agent-ready`, then `agent-ready check …`. `audit` and `verify` still work as the old names of `check` and `test`.
+
 ## Cost, accounts and data
 
 | | `check` | `test --check` | `test` |
@@ -79,7 +86,9 @@ Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `-
 npx @tansohq/agent-ready check yourproduct.com
 ```
 
-`check` reads your public pages (GET requests, nothing is submitted to your product), shows the seven steps, asks three questions about how agents should onboard, and writes one fix prompt per gap for your coding agent (Claude Code, Cursor). It never writes your product's code.
+`check` reads your public pages (GET requests, nothing is submitted to your product), shows the seven steps, takes how agents should onboard from your docs or the defaults, and writes one fix prompt per gap for your coding agent (Claude Code, Cursor). It never writes your product's code.
+
+It writes `agent-ready.yml` if the folder has none. In a terminal it then asks what next: run a test now, see the plan first (free), or quit with the commands; with `--yes` or no terminal it prints the commands under Next and waits for nothing; with `--json`, stdout carries only the report.
 
 After the seven steps it runs the [aeo-ready](https://www.npmjs.com/package/aeo-ready) standards catalog: five third-party benchmarks of your public surface (agentic-seo, Cloudflare's isitagentready, Fern's afdocs, Vercel's agent-readability, AgentGrade), about 125 checks covering llms.txt, robots rules, markdown and content negotiation, MCP server cards, A2A agent cards, x402, UCP, ACP, AP2, Web Bot Auth, rate-limit headers and structured JSON errors. It is free, spawns `npx` for three of the benchmarks, sends your URL to isitagentready.com (Cloudflare) and AgentGrade's service, and takes usually 1-3 minutes, up to 15 on a large site (aeo-ready is killed after 15; `AGENT_READY_STANDARDS_TIMEOUT_MS` changes that), so a check takes that much longer than before; `--no-standards` skips it and the seven steps print in seconds. The catalog is theirs, not ours: aeo-ready runs `agentgrade-cli`, `agentic-seo` and `@vercel/agent-readability` unpinned through `npx`, so their checks change when those packages do, and nothing in it changes the seven-step verdict. A benchmark that did not run says why; an aeo-ready failure is printed, never hidden.
 
@@ -147,7 +156,7 @@ Scores are each benchmark's own (Cloudflare grades a level out of 5, the others 
 
 The right-hand column says how each step was found: `from your files` (a structured file or an HTTP status), `from page text` (matched in prose, so it can be wrong), or `needs a test run` (public pages cannot show it). A check never reports a step as verified; only a test with a real agent can.
 
-The three questions pick the onboarding model the prompts build toward: who holds the account when an agent first uses it, what one abusive free account costs, and whether a verified person must exist before the agent acts. Defaults come from what your docs describe; when pages written for agents document the onboarding model, `check` shows it instead of asking. "Not sure" keeps a default. Answers are saved to `agent-ready.yml`; commit it and later runs reuse it.
+The three questions pick the onboarding model the prompts build toward: who holds the account when an agent first uses it, what one abusive free account costs, and whether a verified person must exist before the agent acts. `check` does not ask them: it takes what your docs describe, or the recommended model when they describe none, and prints the onboarding model it used. The headline and the seven steps are the same whatever the answers; the answers change the findings and the fix prompts. Edit `agent-ready.yml`, pass the flags, or run with `--ask` to answer in the terminal (a model your agent-facing pages document is shown, not asked; "not sure" keeps a default). Answers are saved to `agent-ready.yml`; commit it and later runs reuse it.
 
 `agent_identity` covers an agent signing in as itself. It is detected for [AgentID](https://www.agentid.com) when your own pages say agents sign in with it: a sign-in phrase ("Sign in with AgentID", "signed in to Acme with AgentID", "Sign-up with **AgentID**", "Acme accepts AgentID"); "via AgentID", "the AgentID path" or "chooses AgentID" next to sign-in words; "Identity provider: AgentID" or "Issuer: https://auth.agentid.com" on a page written for agents (llms.txt, auth.md, skill.md); or your own `/auth/agentid` route in your docs or OpenAPI document. The name alone does not count, and neither do sentences that place the sign-in at other products ("where apps accept it", "add Sign in with AgentID to your app"), integration guides ("Add AgentID to Clerk"), or AgentID's own site. When it is detected, the Sign up reason names AgentID, what the agent needs (an AgentMail inbox, an AgentMail key with `app_connect` on, and usually a browser), and whether your docs mention the owner claims. If another agent-first path is the one the report follows, Sign up and Access add a sentence about the AgentID path. `test` cannot complete an AgentID sign-in yet.
 
@@ -155,14 +164,14 @@ Each run writes `.agent-ready/<host>/<runId>/` with `audit-report.json`, `interf
 
 | Flag | Does |
 | --- | --- |
-| `--yes` | Accept the defaults without asking. Writes `agent-ready.yml` with them if there is none; never overwrites one. |
-| `--ask` | Ask again even if `agent-ready.yml` has answers. |
+| `--ask` | Ask the three onboarding questions in the terminal, even if `agent-ready.yml` has answers. Needs a terminal. |
+| `--yes` | Skip the question about running a test next. |
 | `--json` | Print `audit-report.json` (`agent-ready/audit-report@1`) to stdout. |
 | `--fail-on high\|medium` | Exit 1 when a fix at that severity or above is found. |
 | `--no-standards` | Skip the aeo-ready standards catalog. Without it a check spawns `npx` and takes usually 1-3 minutes longer, up to 15 on a large site; still free. |
 | `--no-color` | Plain output. `NO_COLOR` is respected too. |
 
-Exit codes: `0` done, `1` fixes at or above `--fail-on`, `2` usage error, a malformed address, or no answers without a terminal (run it in a terminal once, or pass `--yes`), `3` the site did not answer (no DNS record, refused, timeout or a 5xx; nothing is written), `130` cancelled at a question.
+Exit codes: `0` done, `1` fixes at or above `--fail-on`, `2` usage error, a malformed address, or `--ask` without a terminal, `3` the site did not answer (no DNS record, refused, timeout or a 5xx; nothing is written), `130` cancelled at a question.
 
 In CI: `npx @tansohq/agent-ready check $URL --fail-on high --json`, with `agent-ready.yml` committed.
 
@@ -271,7 +280,7 @@ npx @tansohq/agent-ready test --json --yes     # creates a real account on the p
 ```
 
 - `--json` prints one JSON document to stdout: `agent-ready/audit-report@1` for `check` (with `files.prompts`, `files.brief`, `files.config` and `files.standards`, relative to where it ran; `standards` holds the aeo-ready catalog as `{ generator: { name, version }, averageScore, benchmarks: [{ id, name, score, maxScore, grade, passed, total, failed: [check names], error, durationMs }], warnings, error }` and is absent with `--no-standards`; a benchmark that did not run has `score: null` and its reason in `error`; `durationMs` is the benchmark's own wall-clock time, null when aeo-ready is older than 1.8.0), `agent-ready/verify@1` for `test`, `agent-ready/verify-plan@1` for `test --check`, and `agent-ready/error@1` for any error, as `{ error: { code, message, hint } }`. Nothing else goes to stdout.
-- The three questions have flags: `--onboarding`, `--abuse-cost`, `--human-before`. Any of them, or `--yes`, means no prompt; unanswered ones take their defaults. `--human-before never` lets an agent act alone, `outbound` requires a verified person before an agent sends, publishes, charges or invites, and `always` requires a verified person to own the account before any use. The fix prompts carry that rule.
+- The three questions have flags: `--onboarding`, `--abuse-cost`, `--human-before`. Unanswered ones take their defaults. `--human-before never` lets an agent act alone, `outbound` requires a verified person before an agent sends, publishes, charges or invites, and `always` requires a verified person to own the account before any use. The fix prompts carry that rule.
 - Exit codes: `0` done, `1` fixes at or above `--fail-on` (`check`) or the test failed (`test`), `2` usage or setup, `3` the site did not answer or the run was inconclusive, `130` cancelled.
 - Each fix prompt is written for a coding agent: read `files.prompts[0]`, make the change in the developer's repository, run its acceptance tests, deploy, then run `check` again.
 

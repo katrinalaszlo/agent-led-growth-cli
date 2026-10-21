@@ -280,11 +280,20 @@ describe("audit: command", () => {
   });
   after(() => child.kill());
 
-  it("without a terminal, answers or --yes, it exits 2 and says what to do", () => {
+  it("without --ask it asks nothing, says which onboarding model it took and saves the defaults", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const r = runCli(["audit", site], cwd);
+    const r = runCli(["audit", site, "--no-standards", "--out", join(cwd, "run")], cwd);
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stderr, /Enter to keep, or a number/);
+    assert.match(r.stderr, /Not right\? Change onboarding in agent-ready\.yml, or run check with --ask\./);
+    assert.match(readFileSync(join(cwd, "agent-ready.yml"), "utf8"), /^onboarding: /m);
+  });
+
+  it("--ask without a terminal exits 2 and says what to do", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
+    const r = runCli(["audit", site, "--ask"], cwd);
     assert.equal(r.status, 2);
-    assert.match(r.stderr, /pass --yes for the defaults/);
+    assert.match(r.stderr, /--ask needs a terminal/);
   });
 
   it("with --yes --json it writes the audit, a brief and one prompt per finding", () => {
@@ -446,7 +455,7 @@ describe("audit: command", () => {
     const tty = join(cwd, "tty.mjs");
     writeFileSync(tty, "process.stdin.isTTY = true;\n");
     const { spawn } = await import("node:child_process");
-    const proc = spawn(process.execPath, ["--import", tty, CLI, "check", site, "--out", join(cwd, "run")], { cwd, env: { ...process.env, NO_COLOR: "1" } });
+    const proc = spawn(process.execPath, ["--import", tty, CLI, "check", site, "--ask", "--out", join(cwd, "run")], { cwd, env: { ...process.env, NO_COLOR: "1" } });
     const replies = ["5", "", ""];
     const r = { stderr: "", status: null };
     proc.stderr.on("data", (chunk) => {
@@ -473,7 +482,7 @@ describe("audit: command", () => {
     const cases = [
       [["audit", site, "--onboarding", "maybe", "--json"], "invalid_flag"],
       [["audit", "ht!tp://bad url", "--json", "--yes"], "invalid_address"],
-      [["audit", site, "--json"], "answers_required"],
+      [["audit", site, "--ask", "--json"], "answers_required"],
       [["audit", "--json"], "usage"],
       [["verify", "--json"], "config_missing"],
     ];

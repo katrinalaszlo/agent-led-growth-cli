@@ -57,6 +57,8 @@ export function renderSteps(audit, style) {
 export function renderSummary(audit, paths, style, relative, savedTo) {
   const where = savedTo ? ` · ${savedTo}` : "";
   const out = ["", `  ${style.bold("Onboarding")}  ${audit.onboarding.chosen.name} ${style.dim(`(${audit.onboarding.chosen.source}${where})`)}`];
+  // Nobody picked it this run, so say how to change it: it shapes the fix prompts.
+  if (!["asked", "flag"].includes(audit.onboarding.chosen.source)) out.push(`              ${style.dim("Not right? Change onboarding in agent-ready.yml, or run check with --ask.")}`);
   if (!audit.findings.length) {
     out.push("", `  ${style.bold("No fixes from public pages.")}`);
   } else {

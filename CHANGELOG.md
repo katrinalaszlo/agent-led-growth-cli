@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.18 (2026-10-20)
+
+- `check` no longer asks the three onboarding questions. It uses `agent-ready.yml`, what the product's docs describe, or the recommended model, and under Onboarding says how to change the model it used ("Not right? Change onboarding in agent-ready.yml, or run check with --ask."). `--ask` asks them in the terminal; it now needs one, and exits `2` with `answers_required` without. Without a terminal and without `--yes` or answers, `check` used to exit `2` with `answers_required`; it now runs with the defaults. `--yes` only skips the offer to run a test next.
+- README: the Quickstart is one path, check, fix, test, with what each step costs and sends; the coding-agent, CI and installed ways follow under Other ways to run it.
+
 ## 0.4.17 (2026-10-20)
 
 - `check` in a terminal no longer asks who holds the account when the product's agent-facing pages document it; it shows the documented answer, which you can change in `agent-ready.yml`. Answering "not sure", "?" or "idk" keeps a question's default instead of asking again.

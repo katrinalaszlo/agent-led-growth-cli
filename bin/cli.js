@@ -78,9 +78,9 @@ const QUESTION_FLAGS = { onboarding: "onboarding", abuseCost: "abuse_cost", huma
 program
   .command("check <url>")
   .alias("audit")
-  .description("Check whether AI agents can find, sign up for, use and pay for your product. Free: reads public pages only (GET), asks how agents should onboard, writes a fix prompt for each gap.")
-  .option("-y, --yes", "accept the defaults without asking")
-  .option("--ask", `ask again even if ${CONFIG_FILE} has answers`)
+  .description("Check whether AI agents can find, sign up for, use and pay for your product. Free: reads public pages only (GET), takes how agents should onboard from your docs or the defaults, writes a fix prompt for each gap.")
+  .option("-y, --yes", "skip the question about running a test next")
+  .option("--ask", "ask the three onboarding questions in the terminal instead of taking the defaults")
   .option("--task <text>", "what an agent should accomplish", DEFAULT_TASK)
   .option("--onboarding <model>", "answer the first question: try_then_claim (Try first, claim later) | limited_until_claimed (Limited until claimed) | agent_is_customer (Agent is the customer) | agent_identity (Agent identity) | existing_account (Person sets up access first) | pay_per_request (Payment instead of signup)")
   .option("--abuse-cost <cost>", "answer the second question: low | high")
@@ -92,9 +92,9 @@ program
   .option("--no-color", "plain output")
   .addHelpText("after", `
 Examples:
-  agent-ready check example.com                           ask 3 questions, write fix prompts
+  agent-ready check example.com                           write fix prompts, onboarding answers from the docs or defaults
+  agent-ready check example.com --ask                     answer the three onboarding questions yourself
   agent-ready check example.com --no-standards            the seven steps only, in seconds
-  agent-ready check example.com --yes                     use the defaults, no questions
   agent-ready check example.com --fail-on high --json     for CI
   agent-ready check example.com --onboarding existing_account --human-before always --json
                                                           answer the questions with flags (agents, CI)`)
@@ -117,8 +117,10 @@ Examples:
     const saved = readConfig(configPath);
     const savedHere = saved && saved.url && configHost(saved.url) === host ? saved : null;
     // Answering any question by flag means the caller is not a person at a terminal: the rest take their defaults.
-    const interactive = Boolean(process.stdin.isTTY) && !opts.yes && !opts.json && !flagged && (!savedHere || opts.ask);
-    if (!interactive && !opts.yes && !flagged && !savedHere) fail(opts, 2, "answers_required", `No answers for ${host}.`, `Run "agent-ready check ${host}" in a terminal to answer the questions, pass --yes for the defaults, or answer with --onboarding, --abuse-cost and --human-before.`);
+    // The questions are asked only on --ask: most people do not know the answers on a first run, and the defaults
+    // (what the docs document, or the recommended model) give the same headline and steps.
+    if (opts.ask && (!process.stdin.isTTY || opts.json)) fail(opts, 2, "answers_required", "--ask needs a terminal.", `Run "agent-ready check ${host} --ask" in a terminal, or answer with --onboarding, --abuse-cost and --human-before.`);
+    const interactive = Boolean(opts.ask) && !flagged;
 
     const id = newRunId();
     const out = resolve(opts.out || runDir(process.cwd(), { url }, id));
@@ -157,10 +159,12 @@ Examples:
       const { droppedVerifyFor } = writeConfig(configPath, { url: url.startsWith("https://") ? host : new URL(url).origin, task, answers });
       savedTo = `saved to ${CONFIG_FILE}`;
       if (droppedVerifyFor) say(`  ${style.dim(`Dropped verify_call for ${droppedVerifyFor}; test will pick a call for ${host}.`)}`);
-    } else if (!saved) {
-      // --yes with no agent-ready.yml yet writes the defaults, so verify has a file to read. It never overwrites one.
-      writeConfig(configPath, { url: url.startsWith("https://") ? host : new URL(url).origin, task, answers });
-      savedTo = `defaults saved to ${CONFIG_FILE}`;
+    } else {
+      if (!saved) {
+        // With no agent-ready.yml yet the answers are written, so test has a file to read. It never overwrites one.
+        writeConfig(configPath, { url: url.startsWith("https://") ? host : new URL(url).origin, task, answers });
+        savedTo = `defaults saved to ${CONFIG_FILE}`;
+      }
     }
 
     const audit = buildAudit({ doc, funnel, answers, task, runId: id, version: pkg.version });
