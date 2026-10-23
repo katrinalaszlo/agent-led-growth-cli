@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 (2026-10-23)
+
+- `alg connect`: sets up Track's key without copying a secret by hand. It prints a code and opens the browser; once approved it writes `AGENT_TRAFFIC_KEY` (and `AGENT_TRAFFIC_PROJECT_ID`, not a secret) to `.env` or `--env-file`, replacing existing lines for those names and keeping the rest, and creates a new file with mode 0600. It warns when the file is not gitignored in a git repo and offers to add it. In a folder linked to Vercel, or with `--vercel`, it offers to run `vercel env add AGENT_TRAFFIC_KEY production` with the key on stdin. The key is never printed, logged or put on a command line. `--endpoint` or `AGENT_TRAFFIC_ENDPOINT` points it at another Track server, which is then written as `AGENT_TRAFFIC_ENDPOINT`.
+
 ## 0.7.0 (2026-10-23)
 
 - `test` no longer stops when `alg.yml` has no `verify_call` and the product has no OpenAPI document. At a terminal it asks for a GET that needs a key (and the header that carries it, default `Authorization: Bearer {key}`), checks the answer, saves it to `alg.yml` and continues the run; Enter with nothing skips the check for that run. Answering "n" to an inferred call asks the same way instead of cancelling. Before, it printed `verify_call_invalid` and left the person to edit the file and start over.

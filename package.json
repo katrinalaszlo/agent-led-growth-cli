@@ -1,6 +1,6 @@
 {
   "name": "agent-led-growth",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Score: evals for agents as customers. Runs a real agent through signup, key and first call on your product, before you ship. Track, the analytics half, measures which agents convert after.",
   "type": "module",
   "bin": {
@@ -15,6 +15,7 @@
     "bin/cli.js",
     "src/index.js",
     "src/audit/",
+    "src/connect/",
     "src/dashboard/strip.js",
     "src/crash/",
     "src/harness/",

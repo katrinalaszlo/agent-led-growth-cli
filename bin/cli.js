@@ -35,6 +35,7 @@ import { inferVerifyCall, latestInterface, latestAnswers } from "../src/verify/i
 import { askVerifyCall } from "../src/verify/wizard.js";
 import { renderPrompt } from "../src/audit/prompts.js";
 import { patternInfo } from "../src/audit/index.js";
+import { connect, resolveEndpoint } from "../src/connect/index.js";
 import { createInterface } from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 
@@ -467,6 +468,46 @@ Examples:
       console.error("");
     }
     process.exitCode = verdict.exitCode;
+  });
+
+program
+  .command("connect")
+  .description("Connect this app to Track: approve in the browser, and the key is written to .env for you (and to Vercel if you say yes). The key is never printed.")
+  .option("--endpoint <url>", "Track server (default: AGENT_TRAFFIC_ENDPOINT, else https://alg.katrinalaszlo.com)")
+  .option("--env-file <path>", "env file to write the key to", ".env")
+  .option("--vercel", "also save the key in Vercel production (asked by default when .vercel/project.json exists)")
+  .option("--no-vercel", "do not offer to save the key in Vercel")
+  .option("--no-color", "plain output")
+  .addHelpText("after", `
+Examples:
+  alg connect                         sign in, write AGENT_TRAFFIC_KEY to .env
+  alg connect --env-file .env.local   write it to another file
+  alg connect --no-vercel             skip the Vercel question`)
+  .exitOverride(usageExit)
+  .action(async (opts) => {
+    const endpoint = resolveEndpoint(opts.endpoint, process.env);
+    if (!/^https?:\/\/[^/]+/.test(endpoint)) fail(opts, 2, "invalid_address", `"${endpoint}" is not a web address.`, "Try: alg connect --endpoint https://alg.katrinalaszlo.com");
+    const style = makeStyle(Boolean(process.stderr.isTTY) && opts.color && !process.env.NO_COLOR);
+    const ask = async (question) => {
+      const rl = createInterface({ input: process.stdin, output: process.stderr });
+      const reply = await rl.question(question).catch((err) => {
+        if (err.code === "ABORT_ERR") return "n";
+        throw err;
+      });
+      rl.close();
+      return reply;
+    };
+    process.exitCode = await connect({
+      endpoint,
+      envFile: resolve(opts.envFile),
+      vercel: opts.vercel,
+      cwd: process.cwd(),
+      interactive: Boolean(process.stdin.isTTY),
+      sleep: (ms) => new Promise((done) => setTimeout(done, ms)),
+      ask,
+      say: (line) => console.error(line),
+      style,
+    });
   });
 
 // 0.3 kept a Tanso workspace for verify runs. check and test need no Tanso account now; these

@@ -104,6 +104,14 @@ Add agent traffic to this API: read https://alg.katrinalaszlo.com/SKILL.md and f
 Add agent traffic to this API: read https://alg.katrinalaszlo.com/SKILL.md and follow it.
 ```
 
+To set up the key yourself, run this in your API's folder:
+
+```bash
+npx agent-led-growth connect
+```
+
+It prints a code and opens your browser; approve there, and it writes `AGENT_TRAFFIC_KEY` to `.env` (plus `AGENT_TRAFFIC_PROJECT_ID`, which is not a secret and is optional). Nothing to copy: the key is never printed, logged or put on a command line. If `.env` is not in `.gitignore` it says so and offers to add it. In a folder linked to Vercel (`.vercel/project.json`) it asks whether to also save the key in Vercel production, and passes it to `vercel env add` on stdin. Then restart your server and open `https://alg.katrinalaszlo.com/install` to watch the first event.
+
 ## Full command reference
 
 ### The three steps
@@ -142,7 +150,7 @@ Commit `alg.yml` so CI reuses your answers. `test` needs Claude Code installed a
 
 ### Installed
 
-`npm i -g agent-led-growth`, then `alg check …` and `alg test …`.
+`npm i -g agent-led-growth`, then `alg check …`, `alg test …` and `alg connect`.
 
 ### Flags
 
@@ -168,6 +176,17 @@ Commit `alg.yml` so CI reuses your answers. `test` needs Claude Code installed a
 | `--max-turns <n>` | Agent turn budget, default 40. |
 | `--inbox <address>` | An inbox you relay mail from, for products that email a code. Or set `AGENTMAIL_API_KEY` and each run gets its own. |
 | `--json` | `agent-ready/verify@1` (or `verify-plan@1` with `--check`) to stdout. |
+
+`connect`
+
+| Flag | Does |
+| --- | --- |
+| `--endpoint <url>` | Track server. Default `AGENT_TRAFFIC_ENDPOINT`, else `https://alg.katrinalaszlo.com`. |
+| `--env-file <path>` | File to write the key to. Default `.env`. Existing lines for the same names are replaced; the rest of the file is kept. A new file is created readable only by you. |
+| `--vercel` | Also save the key in Vercel production. Asked by default when `.vercel/project.json` exists; without a terminal, only this flag does it. |
+| `--no-vercel` | Do not offer Vercel. |
+
+`connect` exits `0` when the key is saved and `1` when the sign-in is denied or expires.
 
 Exit codes, both commands: `0` done or passed, `1` fixes found or test failed, `2` usage or setup, `3` the site did not answer or the run was inconclusive, `130` cancelled.
 
