@@ -1,7 +1,7 @@
 {
   "name": "agent-led-growth",
-  "version": "0.6.0",
-  "description": "Can an AI agent sign up for your product, get a key, use it and pay, without a person? One command shows where it stops; a real agent proves it.",
+  "version": "0.6.1",
+  "description": "Score: evals for agents as customers. Runs a real agent through signup, key and first call on your product, before you ship. Track, the analytics half, measures which agents convert after.",
   "type": "module",
   "bin": {
     "alg": "bin/cli.js",

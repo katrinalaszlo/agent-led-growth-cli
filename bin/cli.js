@@ -47,7 +47,7 @@ const frameSize = (value) => {
 };
 
 const program = new Command();
-program.name("alg").description("Can an AI agent find, sign up for, use and pay for your product without a person?").version(pkg.version);
+program.name("alg").description("Score: evals for agents as customers. Runs a real agent through signup, key and first call on your product, before you ship. Track, the analytics half, measures which agents convert after.").version(pkg.version);
 
 function parseClaims(value) {
   const on = value.split(",").map((s) => s.trim()).filter(Boolean);

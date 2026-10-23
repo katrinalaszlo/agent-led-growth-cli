@@ -1,6 +1,8 @@
 # agent-led-growth
 
-Can an AI agent sign up for your product, get a key, use it and pay, without a person? One command tells you where it stops. A second one proves it with a real agent.
+Evals and analytics for agents as customers. Score before you ship, Track after.
+
+This is Score, the evals half, and not the prompt-scorecard kind: it runs a real agent through signup, key and first call on your product. One command reads your pages and says where an agent would stop. A second one proves it with the agent. The analytics half, [Track](https://alg.katrinalaszlo.com), shows which agents actually do it once you ship.
 
 ```
 $ npx agent-led-growth check resend.com
@@ -70,6 +72,23 @@ npx agent-led-growth test yourproduct.com           # creates a real account; as
 ```
 
 A test uses your Claude Code's model time, capped at $5. Runs in October 2026 cost $0.06 to $0.47 and took 27 seconds to 4 minutes.
+
+## After it passes, measure real agents
+
+A passing test says an agent *can* become a customer. [Track](https://alg.katrinalaszlo.com) says which ones *do*: an Express middleware that records each agent's session, the errors that end it, and the outcomes that follow. Same seven steps, on real traffic instead of one test agent:
+
+| Step here | In Track |
+| --- | --- |
+| Discover, Understand | the first events of a session's path (`llms_txt`, docs routes) |
+| Sign up | outcome `signup` |
+| Access | outcome `key_created` |
+| Use | a session with an authenticated 2xx call; `activation` when you record one |
+| Pay | outcome `paid` |
+| Manage | not measured yet |
+
+```
+Add agent traffic to this API: read https://alg.katrinalaszlo.com/SKILL.md and follow it.
+```
 
 ## Why not a readiness score
 
