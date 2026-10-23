@@ -97,14 +97,10 @@ A passing test says an agent *can* become a customer. [Track](https://alg.katrin
 | Manage | not measured yet |
 
 ```
-Add agent traffic to this API: read https://alg.katrinalaszlo.com/SKILL.md and follow it.
+Add Track to this API: read https://alg.katrinalaszlo.com/SKILL.md and follow it.
 ```
 
-```
-Add agent traffic to this API: read https://alg.katrinalaszlo.com/SKILL.md and follow it.
-```
-
-To set up the key yourself, run this in your API's folder:
+If you already have a Track account, you can set up the key yourself instead. Run this in your API's folder:
 
 ```bash
 npx agent-led-growth connect
@@ -273,4 +269,4 @@ npx agent-led-growth test --json --yes     # creates a real account; ask the dev
 
 Each fix prompt is written for a coding agent: read `files.prompts[0]`, make the change, run its acceptance tests, deploy, run `check` again.
 
-Source: https://github.com/katrinalaszlo/score (development) and https://github.com/katrinalaszlo/agent-led-growth-cli (the published build, where issues go). MIT.
+Source and issues: https://github.com/katrinalaszlo/agent-led-growth-cli. MIT.

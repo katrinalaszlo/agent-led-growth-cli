@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 (2026-10-23)
+
+- README only: the source link points at the public repository, agent-led-growth-cli, and the install prompt appears once, as "Add Track to this API".
+
 ## 0.8.0 (2026-10-23)
 
 - `alg connect`: sets up Track's key without copying a secret by hand. It prints a code and opens the browser; once approved it writes `AGENT_TRAFFIC_KEY` (and `AGENT_TRAFFIC_PROJECT_ID`, not a secret) to `.env` or `--env-file`, replacing existing lines for those names and keeping the rest, and creates a new file with mode 0600. It warns when the file is not gitignored in a git repo and offers to add it. In a folder linked to Vercel, or with `--vercel`, it offers to run `vercel env add AGENT_TRAFFIC_KEY production` with the key on stdin. The key is never printed, logged or put on a command line. `--endpoint` or `AGENT_TRAFFIC_ENDPOINT` points it at another Track server, which is then written as `AGENT_TRAFFIC_ENDPOINT`.
