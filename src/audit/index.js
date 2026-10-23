@@ -153,7 +153,7 @@ export function renderBrief(audit, doc) {
   lines.push("## Steps", "", "| Step | State | How we know | Evidence |", "| --- | --- | --- | --- |");
   for (const s of audit.steps) lines.push(`| ${s.name} | ${s.state.replace("_", " ")} | ${s.basis.replace("_", " ")} | ${evidence(s.basedOn).join(", ") || "none"} |`);
   lines.push("", "## Fixes", "");
-  if (!audit.findings.length) lines.push("None from public pages. A test with a real agent is the next step: `npx @tansohq/agent-ready test --check` shows the plan for free, `npx @tansohq/agent-ready test` runs it.");
+  if (!audit.findings.length) lines.push("None from public pages. A test with a real agent is the next step: `npx agent-led-growth test --check` shows the plan for free, `npx agent-led-growth test` runs it.");
   for (const f of audit.findings) lines.push(`${f.n}. **${f.title}** (${f.severity}, ${f.name}). Prompt: prompts/${f.file}`);
   lines.push("", "## What this check cannot show", "", ...audit.limits.map((l) => `- ${l}`), "- payment, KYC and claim decisions by a real person were not tested", "");
   return lines.join("\n");

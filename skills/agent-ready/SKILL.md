@@ -5,16 +5,16 @@ description: "Check whether an AI agent can find, sign up for, get a key to, use
 
 # agent-ready check
 
-`npx @tansohq/agent-ready check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing to the product, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part sends the product's URL to two benchmark services, Cloudflare's isitagentready.com and AgentGrade's, spawns `npx` and takes usually 1-3 minutes, up to 15 on a large site; `--no-standards` skips it when the developer wants only the seven steps, fast, or does not want the URL sent anywhere.
+`npx agent-led-growth check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing to the product, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part sends the product's URL to two benchmark services, Cloudflare's isitagentready.com and AgentGrade's, spawns `npx` and takes usually 1-3 minutes, up to 15 on a large site; `--no-standards` skips it when the developer wants only the seven steps, fast, or does not want the URL sent anywhere.
 
 ## If the developer asks for a test
 
-Do not run `check` in its place, and do not run `test` from this skill. Explain in one or two sentences that `test` runs a real agent that creates an account on the product and spends model money through the developer's Claude Code, then point to the `agent-ready-test` skill: in Claude Code the developer starts it by typing `/agent-ready-test`. You may run the free `npx @tansohq/agent-ready test <url> --check --json` first and show the plan.
+Do not run `check` in its place, and do not run `test` from this skill. Explain in one or two sentences that `test` runs a real agent that creates an account on the product and spends model money through the developer's Claude Code, then point to the `agent-ready-test` skill: in Claude Code the developer starts it by typing `/agent-ready-test`. You may run the free `npx agent-led-growth test <url> --check --json` first and show the plan.
 
 ## Run it
 
 ```bash
-npx @tansohq/agent-ready check <url> --json --yes
+npx agent-led-growth check <url> --json --yes
 ```
 
 - Needs Node 20.9 or later. The first `npx` run downloads the package.
@@ -44,7 +44,7 @@ The fix prompts build toward the chosen model. Say which answers you used and th
 3. Never call a step verified or confirmed: a check only reads pages. Say how each step was found (`basis`): `observed` comes from a structured file or an HTTP status, `heuristic` from matching page text (it can be wrong), and `not_checked` means public pages cannot show it. Only a test with a real agent shows a step works. `state`: `agent_can`/`agent_did` pass, `handoff` passes with one person step, `needs_person`/`blocked` are gaps, `not_checked` needs a test.
 4. After the findings, summarize `standards` in a few lines: each benchmark's passed/total and score, then the failed check names the developer asks about. Say they are third-party benchmarks and separate from the seven steps. If `standards.error` is set, tell the developer aeo-ready did not run and quote it.
 5. Give the paths in `files`: `files.prompts` (one fix prompt per finding), `files.brief` (a one-page brief for security, legal and billing), `files.config` and `files.standards` (aeo-ready's full output).
-6. Then tell the developer the next step is a test, and offer the free plan: `npx @tansohq/agent-ready test <url> --check --json`. Do not run `test` itself; see 'If the developer asks for a test'.
+6. Then tell the developer the next step is a test, and offer the free plan: `npx agent-led-growth test <url> --check --json`. Do not run `test` itself; see 'If the developer asks for a test'.
 
 ## Fix a gap
 

@@ -67,7 +67,7 @@ export async function smoke({ url, outDir, runId, version, task = "", log = () =
       mode: "smoke", persona: "scripted walk", task, flows: [], findings: [], worked: [], human_interventions: 0, human_assist: false,
     };
   }
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: `agent-ready/${VERSION} smoke (+https://tansohq.com)`, ...(video ? recordVideoOptions(outDir) : {}) });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: `agent-led-growth/${VERSION} smoke (+https://github.com/katrinalaszlo/agent-led-growth-cli)`, ...(video ? recordVideoOptions(outDir) : {}) });
   const page = await context.newPage();
   let n = 0;
   const shot = async (name) => {

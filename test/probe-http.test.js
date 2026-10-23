@@ -57,6 +57,6 @@ describe("probe/http get", () => {
   it("takes its version from package.json", () => {
     const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
     assert.equal(VERSION, pkg.version);
-    assert.ok(USER_AGENT.includes(`agent-ready/${pkg.version} `));
+    assert.ok(USER_AGENT.includes(`agent-led-growth/${pkg.version} `));
   });
 });

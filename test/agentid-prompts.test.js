@@ -89,7 +89,7 @@ describe("fix prompts: Sign in with AgentID", () => {
     assert.doesNotMatch(build, /RFC 8628/);
     assert.doesNotMatch(body, /POST \/v1\/agent\/signup/);
     // How to verify: rerun check, which recognizes the sentence the prompt asks for.
-    assert.match(section(body, "When done"), /npx @tansohq\/agent-ready check https:\/\/acme\.dev\/` again/);
+    assert.match(section(body, "When done"), /npx agent-led-growth check https:\/\/acme\.dev\/` again/);
     assert.match(section(body, "When done"), /`check` recognizes "Sign in with AgentID" on the product's own pages/);
     assert.ok(body.includes(AGENTID_DOC_SENTENCE));
     assert.doesNotMatch(body, /—/);

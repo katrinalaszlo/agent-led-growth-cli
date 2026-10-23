@@ -9,7 +9,7 @@ Needs Node 20.9 or later. Step 3 also needs [Claude Code](https://claude.com/cla
 **1. Check your product.** Free, and it submits nothing to your product. It reads your public pages, then runs a standards catalog that sends your URL to Cloudflare's isitagentready.com and AgentGrade's service and takes 1-3 minutes; add `--no-standards` to skip that and finish in seconds.
 
 ```bash
-npx @tansohq/agent-ready check yourproduct.com
+npx agent-led-growth check yourproduct.com
 ```
 
 You get seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage), each marked documented, missing or needs a test, and one fix prompt per gap. It asks no questions: how agents should onboard comes from your docs, or a recommended default, and is saved to `agent-ready.yml`.
@@ -19,8 +19,8 @@ You get seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage), e
 **3. Test with a real agent.** Your Claude Code tries to sign up and use your product; a separate checker then calls your API with the key it got.
 
 ```bash
-npx @tansohq/agent-ready test yourproduct.com --check   # free: shows what the run would do
-npx @tansohq/agent-ready test yourproduct.com           # asks before it starts; creates a real account on your product
+npx agent-led-growth test yourproduct.com --check   # free: shows what the run would do
+npx agent-led-growth test yourproduct.com           # asks before it starts; creates a real account on your product
 ```
 
 A run uses your Claude Code's model time, capped at $5; October runs cost $0.06 to $0.47. `test` finds the API call that checks the key in your OpenAPI document; if there is none, it asks you to add a `verify_call` to `agent-ready.yml`.
@@ -34,18 +34,18 @@ At the end of a `check` in a terminal you can start step 3 from a menu. Neither 
 Paste this into Claude Code, Codex, Cursor or another agent that can run shell commands:
 
 ```text
-Read https://raw.githubusercontent.com/tansohq/agent-ready-cli/main/skills/agent-ready/SKILL.md and follow it to check yourproduct.com.
+Read https://raw.githubusercontent.com/katrinalaszlo/agent-led-growth-cli/main/skills/agent-ready/SKILL.md and follow it to check yourproduct.com.
 ```
 
 To keep the instructions installed, add the two skills. `agent-ready` runs the check; `agent-ready-test` runs a test with a real agent and is written to run only when you ask.
 
 ```bash
 # Claude Code, as a plugin
-claude plugin marketplace add tansohq/agent-ready-cli
+claude plugin marketplace add katrinalaszlo/agent-led-growth-cli
 claude plugin install agent-ready@agent-ready
 
 # Codex, Cursor and other agents that read skills, with the skills CLI (https://github.com/vercel-labs/skills)
-npx skills add tansohq/agent-ready-cli
+npx skills add katrinalaszlo/agent-led-growth-cli
 ```
 
 Then ask in plain words, such as "check yourproduct.com with agent-ready". A test starts only when you invoke it yourself, because it creates an account and spends money: in Claude Code, type `/agent-ready-test`. Agents that don't support user-only skills follow the skill's own rule: check the plan, then ask before a real run.
@@ -53,14 +53,14 @@ Then ask in plain words, such as "check yourproduct.com with agent-ready". A tes
 ### In CI
 
 ```bash
-npx @tansohq/agent-ready check $URL --fail-on high --json   # exit 1 when a high-severity gap is found
+npx agent-led-growth check $URL --fail-on high --json   # exit 1 when a high-severity gap is found
 ```
 
 Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `--yes --json` where Claude Code is installed and signed in (or `ANTHROPIC_API_KEY` is set). Every run creates a real account and spends model money, so run it there only on purpose.
 
 ### Installed
 
-`npm i -g @tansohq/agent-ready`, then `agent-ready check …`. `audit` and `verify` still work as the old names of `check` and `test`.
+`npm i -g agent-led-growth`, then `agent-ready check …`. `audit` and `verify` still work as the old names of `check` and `test`.
 
 ## Cost, accounts and data
 
@@ -83,7 +83,7 @@ Commit `agent-ready.yml` so CI reuses your answers. `test` can run in CI with `-
 ## Check your product
 
 ```bash
-npx @tansohq/agent-ready check yourproduct.com
+npx agent-led-growth check yourproduct.com
 ```
 
 `check` reads your public pages (GET requests, nothing is submitted to your product), shows the seven steps, takes how agents should onboard from your docs or the defaults, and writes one fix prompt per gap for your coding agent (Claude Code, Cursor). It never writes your product's code.
@@ -152,10 +152,10 @@ Scores are each benchmark's own (Cloudflare grades a level out of 5, the others 
   Next  Step 2 of 3: fix. Paste a prompt into your coding agent, deploy,
         then check again:
         .agent-ready/neon.com/2026-10-21T05-45-24-c75l1m/prompts/01-pay.md
-        npx @tansohq/agent-ready check neon.com
+        npx agent-led-growth check neon.com
   Then  Step 3 of 3: test. The plan is free; a signup uses your Claude Code.
-        npx @tansohq/agent-ready test neon.com --check
-        npx @tansohq/agent-ready test neon.com
+        npx agent-led-growth test neon.com --check
+        npx agent-led-growth test neon.com
 ```
 
 The right-hand column says how each step was found: `from your files` (a structured file or an HTTP status), `from page text` (matched in prose, so it can be wrong), or `needs a test run` (public pages cannot show it). A check never reports a step as verified; only a test with a real agent can.
@@ -177,12 +177,12 @@ Each run writes `.agent-ready/<host>/<runId>/` with `audit-report.json`, `interf
 
 Exit codes: `0` done, `1` fixes at or above `--fail-on`, `2` usage error, a malformed address, or `--ask` without a terminal, `3` the site did not answer (no DNS record, refused, timeout or a 5xx; nothing is written), `130` cancelled at a question, or Ctrl+C during the standards catalog (the fixes and `audit-report.json` are already written, without `standards`).
 
-In CI: `npx @tansohq/agent-ready check $URL --fail-on high --json`, with `agent-ready.yml` committed.
+In CI: `npx agent-led-growth check $URL --fail-on high --json`, with `agent-ready.yml` committed.
 
 ## Test with a real agent
 
 ```bash
-npx @tansohq/agent-ready test yourproduct.com
+npx agent-led-growth test yourproduct.com
 ```
 
 `test` has a real agent (your local Claude Code) try the task in `agent-ready.yml` on your product. The checker then calls your API with the agent's key, with no key and with a wrong key, using `verify_call` or a call from your OpenAPI document. `check` writes the file.
@@ -241,7 +241,7 @@ The agent installs CLIs inside the run folder (`.tools/`), since its sandbox can
 You don't tell the agent where to save its key: the run asks it to write `AGENT_READY_KEY` (and each `verify_fields` name) to `work/CREDENTIAL.env`, and the checker reads them from there. When the product hands back several secrets, say in `task` which one the check uses (for Neon, "the identity assertion is the key"); without that, an agent may save the wrong one. Before the real run, `test --check` shows what it would do without starting the agent or sending a request to your product (with no `verify_call`, it reads your public docs to infer one, GET only): whether Claude Code is installed and signed in, the hosts the agent may reach, the inbox, what the agent saves, and the calls the checker makes. It exits `0` when ready and `2` when not.
 
 ```bash
-npx @tansohq/agent-ready test --check
+npx agent-led-growth test --check
 ```
 
 The checker makes that call three times: with the agent's key (must return `verify_expect` and pass the assertion), with no key, and with a wrong key (both must be refused with 400, 401 or 403). A call that answers without a key proves nothing, so `test` says so instead of passing.
@@ -279,10 +279,10 @@ Exit codes: `0` passed (or a correct handoff when your onboarding model says a p
 Everything works without a terminal:
 
 ```bash
-npx @tansohq/agent-ready check example.com --json --yes
-npx @tansohq/agent-ready check example.com --json --onboarding existing_account --abuse-cost high --human-before always
-npx @tansohq/agent-ready test --check --json   # free: checks setup and prints the plan, runs nothing
-npx @tansohq/agent-ready test --json --yes     # creates a real account on the product; ask the developer first
+npx agent-led-growth check example.com --json --yes
+npx agent-led-growth check example.com --json --onboarding existing_account --abuse-cost high --human-before always
+npx agent-led-growth test --check --json   # free: checks setup and prints the plan, runs nothing
+npx agent-led-growth test --json --yes     # creates a real account on the product; ask the developer first
 ```
 
 - `--json` prints one JSON document to stdout: `agent-ready/audit-report@1` for `check` (with `files.prompts`, `files.brief`, `files.config` and `files.standards`, relative to where it ran; `standards` holds the aeo-ready catalog as `{ generator: { name, version }, averageScore, benchmarks: [{ id, name, score, maxScore, grade, passed, total, failed: [check names], error, durationMs }], warnings, error }` and is absent with `--no-standards`; a benchmark that did not run has `score: null` and its reason in `error`; `durationMs` is the benchmark's own wall-clock time, null when aeo-ready is older than 1.8.0), `agent-ready/verify@1` for `test`, `agent-ready/verify-plan@1` for `test --check`, and `agent-ready/error@1` for any error, as `{ error: { code, message, hint } }`. Nothing else goes to stdout.
@@ -299,7 +299,7 @@ npx @tansohq/agent-ready test --json --yes     # creates a real account on the p
 Two of the built-in tasks have the agent pay a product over x402 from its own wallet: `pay-x402-agentmail` (creates one inbox, $2.00, no API key: the payment is the authentication) and `pay-x402-telnyx` (adds $1 of account credit; needs `TELNYX_API_KEY` and an account with the `X402_PAYMENTS_ENABLED` flag). **Real money moves**: USDC on Base, from the wallet whose private key you put in `AGENT_READY_WALLET_KEY`. Use a wallet made for this with a few dollars on it, never your main one. The agent makes exactly one paid request; the evaluator reads the settlement transaction on Base itself (keyless JSON-RPC at mainnet.base.org) and passes only when USDC left that wallet for no more than `AGENT_READY_PAY_CAP_USD` (default 2.00) and the paid request answered 2xx. The key is handed to the agent under another name and redacted from every file the run writes.
 
 ```bash
-AGENT_READY_WALLET_KEY=0x… AGENT_READY_PAY_CAP_USD=2 npx @tansohq/agent-ready execute --task pay-x402-agentmail
+AGENT_READY_WALLET_KEY=0x… AGENT_READY_PAY_CAP_USD=2 npx agent-led-growth execute --task pay-x402-agentmail
 ```
 
 ### Pay through Stripe Projects
@@ -307,10 +307,10 @@ AGENT_READY_WALLET_KEY=0x… AGENT_READY_PAY_CAP_USD=2 npx @tansohq/agent-ready 
 `pay-stripe-projects-cloudflare` has the agent buy Cloudflare's Workers Paid plan ($5/month) through [Stripe Projects](https://docs.stripe.com/projects), the pattern where a person sets a wallet up once and a program spends from it. The person's part comes first and is not the agent's: `stripe login` from a browser, `stripe projects init` in a folder, `stripe projects billing add` (a card, entered on a Stripe Checkout page), `stripe projects billing update --limit <dollars>` (the default is $100 per provider per month) and `stripe projects link cloudflare` (a Cloudflare sign-in). Put that folder's path in `AGENT_READY_STRIPE_PROJECT_DIR`; the run copies its `.projects/` into the work directory and the agent runs one command, `stripe projects add cloudflare/workers:paid`. **Real money moves**: the card on your Stripe account is charged. The evaluator reads `stripe projects spend` before and after the run and passes only when the charge grew by no more than `AGENT_READY_PAY_CAP_USD` (default 5.00 for this task), `stripe projects status` lists the new resource, and Cloudflare's API shows the subscription on, read with a token of yours that can read the account's billing (`AGENT_READY_CLOUDFLARE_TOKEN`, `AGENT_READY_CLOUDFLARE_ACCOUNT`); without that token the run is never a success. The command's own verdict is not consulted: on the first real run it said "Provisioning failed" after the charge went through and the plan was on. This task runs Bash **outside** the sandbox, unlike every other: Stripe's plugin listens on 127.0.0.1 and the session lives in the macOS Keychain, neither reachable from inside it. The run's `execution.json` records that.
 
 ```bash
-AGENT_READY_STRIPE_PROJECT_DIR=~/stripe-project AGENT_READY_CLOUDFLARE_TOKEN=… AGENT_READY_CLOUDFLARE_ACCOUNT=… npx @tansohq/agent-ready execute --task pay-stripe-projects-cloudflare
+AGENT_READY_STRIPE_PROJECT_DIR=~/stripe-project AGENT_READY_CLOUDFLARE_TOKEN=… AGENT_READY_CLOUDFLARE_ACCOUNT=… npx agent-led-growth execute --task pay-stripe-projects-cloudflare
 ```
 
-Source: https://github.com/tansohq/agent-ready-cli. Issues and questions go there. The hosted dashboard at [app.tansohq.com](https://app.tansohq.com) ([docs](https://app.tansohq.com/docs), [agent access](https://app.tansohq.com/auth.md)) runs saved tests on a schedule with email or webhook alerts. A hosted test run is not the same harness as `test`: Tanso's model proposes one action at a time and the runner makes bounded HTTP requests to the product's own hosts. It does not drive browser UI or complete arbitrary signup forms.
+Source: https://github.com/katrinalaszlo/agent-led-growth-cli. Issues and questions go there. The hosted dashboard at [app.tansohq.com](https://app.tansohq.com) ([docs](https://app.tansohq.com/docs), [agent access](https://app.tansohq.com/auth.md)) runs saved tests on a schedule with email or webhook alerts. A hosted test run is not the same harness as `test`: Tanso's model proposes one action at a time and the runner makes bounded HTTP requests to the product's own hosts. It does not drive browser UI or complete arbitrary signup forms.
 
 | | CLI `test` | Hosted test run |
 |---|---|---|

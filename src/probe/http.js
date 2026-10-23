@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 // One fetch helper for every probe: bounded time and size, honest UA, never follows to a different host silently, never submits forms.
 // Read once from package.json so the UA, the smoke browser and the served OpenAPI document never disagree with the release.
 export const VERSION = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version;
-export const USER_AGENT = `agent-ready/${VERSION} (+https://tansohq.com)`;
+export const USER_AGENT = `agent-led-growth/${VERSION} (+https://github.com/katrinalaszlo/agent-led-growth-cli)`;
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
 const bareHost = (hostname) => hostname.toLowerCase().replace(/^www\./, "");

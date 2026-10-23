@@ -86,7 +86,7 @@ export function renderSummary(audit, paths, style, relative, savedTo) {
 // by its full path, so it can be copied; the test commands follow for later. They name the product, so test runs on
 // it whatever agent-ready.yml the folder holds.
 export function renderNext(audit, paths, style, relative) {
-  const cmd = `npx @tansohq/agent-ready test ${audit.target.host}`;
+  const cmd = `npx agent-led-growth test ${audit.target.host}`;
   const test = [`        ${style.bold(`${cmd} --check`)}`, `        ${style.bold(cmd)}`, ""];
   const step3 = "Step 3 of 3: test. The plan is free; a signup uses your Claude Code.";
   if (!audit.findings.length) return [`  ${style.bold("Next")}  ${step3}`, ...test];
@@ -94,7 +94,7 @@ export function renderNext(audit, paths, style, relative) {
     `  ${style.bold("Next")}  Step 2 of 3: fix. Paste a prompt into your coding agent, deploy,`,
     "        then check again:",
     `        ${relative(paths.promptsDir)}/${audit.findings[0].file}`,
-    `        ${style.bold(`npx @tansohq/agent-ready check ${audit.target.host}`)}`,
+    `        ${style.bold(`npx agent-led-growth check ${audit.target.host}`)}`,
     `  ${style.bold("Then")}  ${step3}`,
     ...test,
   ];

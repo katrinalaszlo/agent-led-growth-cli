@@ -1,10 +1,13 @@
 {
-  "name": "agent-ready",
-  "description": "agent-ready skills for Claude Code",
-  "owner": { "name": "Tanso", "url": "https://tansohq.com" },
+  "name": "agent-led-growth",
+  "description": "agent-led-growth skills for Claude Code",
+  "owner": {
+    "name": "Kat Laszlo",
+    "url": "https://github.com/katrinalaszlo"
+  },
   "plugins": [
     {
-      "name": "agent-ready",
+      "name": "agent-led-growth",
       "description": "Check whether agents can sign up for and use your product, and test it with a real agent.",
       "source": "./",
       "category": "development"

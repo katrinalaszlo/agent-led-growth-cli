@@ -421,7 +421,7 @@ describe("verify: output", () => {
     const passed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "passed", reason: "ok" }, folder: ".agent-ready/x", promptFile: null }, style);
     assert.match(passed.join("\n"), /Keep it passing: hosted runs, on a schedule with an email when this test\s+breaks, are coming\. Join the waitlist at tansohq\.com\./);
     const failed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "failed", reason: "no" }, folder: ".agent-ready/x", promptFile: "prompts/01-signup.md" }, style);
-    assert.match(failed.join("\n"), /then deploy, run npx @tansohq\/agent-ready check example\.com again,\n {8}and test again/);
+    assert.match(failed.join("\n"), /then deploy, run npx agent-led-growth check example\.com again,\n {8}and test again/);
     assert.doesNotMatch(failed.join("\n"), /Keep it passing/);
     for (const line of [...passed, ...failed]) assert.ok([...line].length <= 80, line);
   });

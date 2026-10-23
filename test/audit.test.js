@@ -325,7 +325,7 @@ describe("audit: command", () => {
     // Step 2 names the first prompt by a path that can be copied, then the test commands for later.
     assert.match(r.stderr, /Next {2}Step 2 of 3: fix\. Paste a prompt into your coding agent, deploy,\n {8}then check again:\n {8}\S+\/prompts\/01-\w+\.md\n/);
     const named = new URL(site).host.replace(/\./g, "\\.");
-    assert.match(r.stderr, new RegExp(`Then {2}Step 3 of 3: test\\. The plan is free; a signup uses your Claude Code\\.\\n {8}npx @tansohq/agent-ready test ${named} --check\\n {8}npx @tansohq/agent-ready test ${named}\\n`));
+    assert.match(r.stderr, new RegExp(`Then {2}Step 3 of 3: test\\. The plan is free; a signup uses your Claude Code\\.\\n {8}npx agent-led-growth test ${named} --check\\n {8}npx agent-led-growth test ${named}\\n`));
     assert.equal(r.stderr.match(/Next {2}/g).length, 1);
     // Next is printed before the catalog runs, so it can be acted on during the wait; the last line repeats it.
     assert.ok(r.stderr.indexOf("Next  ") < r.stderr.indexOf("Benchmarks  optional"), r.stderr);
@@ -333,7 +333,7 @@ describe("audit: command", () => {
     // With fixes to make, nothing waits on a menu.
     assert.doesNotMatch(r.stderr, /Pick 1-3/);
     const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "json")], cwd);
-    assert.doesNotMatch(json.stdout + json.stderr, /npx @tansohq\/agent-ready test/, "--json prints only the report");
+    assert.doesNotMatch(json.stdout + json.stderr, /npx agent-led-growth test/, "--json prints only the report");
   });
 
   it("runs the standards catalog by default: a Benchmarks section after Next, standards and files.standards in --json", () => {
@@ -462,7 +462,7 @@ describe("audit: command", () => {
     assert.equal(r.status, 0, r.stderr);
     assert.equal(readFileSync(path, "utf8"), before);
     const host = new URL(site).host;
-    assert.ok(r.stderr.includes(`npx @tansohq/agent-ready test ${host} --check`), r.stderr);
+    assert.ok(r.stderr.includes(`npx agent-led-growth test ${host} --check`), r.stderr);
     assert.doesNotMatch(r.stderr, /otherproduct/);
   });
 

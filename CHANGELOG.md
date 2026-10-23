@@ -1,9 +1,13 @@
 # Changelog
 
+## 0.5.0 (2026-10-22)
+
+- Renamed. The package is `agent-led-growth` (`npx agent-led-growth check <url>`); `@tansohq/agent-ready` 0.4.20 is the last release under the old name. The `agent-ready` command name still works. Repositories moved to `katrinalaszlo/agent-led-growth` (this one) and `katrinalaszlo/agent-led-growth-cli` (the published build). `agent-ready.yml`, `.agent-ready/` and the skill names are unchanged.
+
 ## 0.4.20 (2026-10-20)
 
 - `test <url>` uses `agent-ready.yml` only when its `url` is that product. When the file is for another product, or there is none, it prints "Not using <path>: it is for <host>.", takes the task and answers from that product's latest check in `.agent-ready/<host>/` (or the defaults), and uses a call from the product's OpenAPI document for that run only, never saving it to that file. Before, `test valueiq.ai` in a folder with `agent-ready.yml` for tansohq.com used tansohq.com's `verify_call`, so the agent's valueiq.ai key would have been sent to tansohq.com. `config_missing` now means no product was named and there is no `agent-ready.yml`.
-- `check`'s Next names the product in the test commands (`npx @tansohq/agent-ready test valueiq.ai --check`), and the What next? menu passes it on, so a test runs on the product just checked whatever `agent-ready.yml` the folder holds. The "agent-ready.yml here is for <host>" message is gone.
+- `check`'s Next names the product in the test commands (`npx agent-led-growth test valueiq.ai --check`), and the What next? menu passes it on, so a test runs on the product just checked whatever `agent-ready.yml` the folder holds. The "agent-ready.yml here is for <host>" message is gone.
 
 ## 0.4.19 (2026-10-20)
 
@@ -240,7 +244,7 @@
 ## 0.1.9 (2026-10-05)
 
 - Two skills replace the old one, which taught agents the hidden `scan` and `crash` commands instead of `audit` and `verify`. `agent-ready` runs the audit; `agent-ready-verify` runs a real agent and, in Claude Code, starts only when you type `/agent-ready-verify`. In fresh Claude Code sessions, "audit neon.com with agent-ready" ran the audit (5 turns, $0.03), "run agent-ready verify on neon.com" showed the plan and pointed to `/agent-ready-verify` without starting a run, and `/agent-ready-verify neon.com` stopped at the plan to ask for a yes.
-- The package is a Claude Code plugin (`claude plugin marketplace add tansohq/agent-ready-cli`), and `npx skills add tansohq/agent-ready-cli` installs the skills for Codex, Cursor and other agents that read `.agents/skills`.
+- The package is a Claude Code plugin (`claude plugin marketplace add katrinalaszlo/agent-led-growth-cli`), and `npx skills add katrinalaszlo/agent-led-growth-cli` installs the skills for Codex, Cursor and other agents that read `.agents/skills`.
 - `verify --max-budget-usd` caps the agent's model use, default $5. Claude Code checks it after each turn, so a run can end slightly above it, and a run stopped there is inconclusive. The confirmation said a run costs "about $1 to $4", taken from September runs; October runs cost $0.06 to $0.47, and it now says so.
 - README: quickstarts for the terminal, a coding agent and CI, and new sections on cost, accounts and data, and on limits, with the numbers from the code.
 - AGENTS.md ships in the package and the public repository, for agents that use or change the tool.
@@ -273,14 +277,14 @@
 ## 0.1.4 (2026-10-05)
 
 - The npm package is built into `dist/cli` with its own `package.json` that depends only on `commander` and `aeo-ready`: about 15 MB installed instead of 65 MB, with no server dependencies (`pg`, Clerk, Vercel) and no Playwright. The hidden browser and video commands say how to install Playwright when they need it.
-- Source is public at https://github.com/tansohq/agent-ready-cli, and the package links there.
+- Source is public at https://github.com/katrinalaszlo/agent-led-growth-cli, and the package links there.
 - Tests that start the server or read run traces moved into their own files, so the CLI's tests ship with the public source and pass there.
 
 ## 0.1.3 (2026-10-05)
 
 - `audit` writes `audit-report.json` (`agent-ready/audit-report@1`) instead of `audit.json` (`agent-ready/audit@1`). The Claude Code skill writes `audit.json`, in another format, into the same run folder, and `report` and `validate` read that file. Rename any script that reads the old name.
 - `verify` checks that Claude Code is installed before starting and says how to install it, instead of reporting an inconclusive run.
-- The Claude Code skill and `AGENTS.md` name the scoped package (`npx @tansohq/agent-ready`).
+- The Claude Code skill and `AGENTS.md` name the scoped package (`npx agent-led-growth`).
 - Agents can drive the CLI without a terminal: each audit question has a flag (`--onboarding`, `--abuse-cost`, `--human-before`); with `--json`, every error from audit and verify, including usage errors, is a JSON document on stdout (`agent-ready/error@1`, with `code`, `message` and `hint`); and the audit JSON lists the files it wrote (`files.prompts`, `files.brief`, `files.config`). The README has a section for agents.
 - Every fix prompt carries the owner's answer to "must a verified person exist before the agent acts?", not only the signup prompt, and says to fit the example endpoints to the product's existing API. Found by an agent doing a developer's task with the CLI.
 - The verdict says how many working steps rely on a person handing the agent access, and wraps to 80 columns.
@@ -300,14 +304,14 @@ Found by testing the published package as a new user and auditing 13 more compan
 
 ## 0.1.1 (2026-10-05)
 
-- README leads with `npx @tansohq/agent-ready audit` and `verify`; the hosted dashboard has its own section.
+- README leads with `npx agent-led-growth audit` and `verify`; the hosted dashboard has its own section.
 - Package links point to tansohq.com instead of the private repository.
 - `verify` output wraps long check details to 80 columns.
 - `serve` names the repository by path instead of a GitHub URL the public cannot open.
 
 ## 0.1.0 (2026-10-05)
 
-First release on npm as `@tansohq/agent-ready`.
+First release on npm as `agent-led-growth`.
 
 - A product on your own machine works end to end: a bare `localhost` or IP address means `http://`, audit saves the full address to `agent-ready.yml`, and the agent's sandbox opens localhost (`allowLocalBinding`, macOS) only when the target itself is local. A run where the agent cannot connect at all is inconclusive, not a failure.
 - The onboarding model you choose drives the fixes: a product whose docs only describe a person handing over a key now gets a signup fix when you choose an agent-first model.

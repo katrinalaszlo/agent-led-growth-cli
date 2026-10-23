@@ -1,9 +1,10 @@
 {
-  "name": "@tansohq/agent-ready",
-  "version": "0.4.20",
+  "name": "agent-led-growth",
+  "version": "0.5.0",
   "description": "Check whether an AI agent can sign up for and use your product, get fix prompts for your coding agent, and test with a real agent.",
   "type": "module",
   "bin": {
+    "agent-led-growth": "bin/cli.js",
     "agent-ready": "bin/cli.js"
   },
   "main": "./src/index.js",
@@ -40,15 +41,15 @@
     "pricing-json",
     "mcp"
   ],
-  "author": "Kat Laszlo <kat@tansohq.com>",
+  "author": "Kat Laszlo",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tansohq/agent-ready-cli.git"
+    "url": "git+https://github.com/katrinalaszlo/agent-led-growth-cli.git"
   },
-  "homepage": "https://github.com/tansohq/agent-ready-cli#readme",
+  "homepage": "https://github.com/katrinalaszlo/agent-led-growth-cli#readme",
   "bugs": {
-    "url": "https://github.com/tansohq/agent-ready-cli/issues"
+    "url": "https://github.com/katrinalaszlo/agent-led-growth-cli/issues"
   },
   "engines": {
     "node": ">=20.9.0"

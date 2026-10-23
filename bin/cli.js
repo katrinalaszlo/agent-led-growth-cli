@@ -230,7 +230,7 @@ Examples:
 
 // check reads public pages; test has a real agent do the steps. With nothing to fix, a person at a terminal can
 // start one here. The same commands are printed under Next for --yes, pipes and agents, so nothing waits on them.
-const TEST_CMD = "npx @tansohq/agent-ready test";
+const TEST_CMD = "npx agent-led-growth test";
 async function offerTest({ audit, style, say }) {
   say(`  ${style.bold("What next?")}`);
   say(`    ${style.bold("1")}  Run a test now    your Claude Code signs up on ${audit.target.host} for real (asks first)`);
@@ -429,7 +429,7 @@ Examples:
       // The run is on disk now, so the strip includes it.
       const journey = localJourney(process.cwd(), url);
       if (journey) for (const line of renderStrip(journey, style, { stoppedAt: summary.step })) console.error(line);
-      else console.error(`  ${style.dim(`Run npx @tansohq/agent-ready check ${host} to see this test on all seven steps.`)}`);
+      else console.error(`  ${style.dim(`Run npx agent-led-growth check ${host} to see this test on all seven steps.`)}`);
       console.error("");
     }
     process.exitCode = verdict.exitCode;
@@ -458,7 +458,7 @@ program
   .action(async (url, opts) => {
     if (url && !url.startsWith("http")) url = `https://${url}`;
     if (!url && !opts.dir) {
-      console.error("  Usage: npx @tansohq/agent-ready scan <url> [--dir ./public]");
+      console.error("  Usage: npx agent-led-growth scan <url> [--dir ./public]");
       process.exit(1);
     }
     const target = url ? { url } : { dir: resolve(opts.dir) };
@@ -615,7 +615,7 @@ program
     validateCrash(result);
     writeFileSync(join(out, "crash.json"), JSON.stringify(result, null, 2));
     if (opts.json) process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-    else console.error(`\n  ${join(out, "crash.json")}${result.video ? `\n  ${result.video.mp4 || result.video.webm}` : ""}\n  next: npx @tansohq/agent-ready report --from ${out}\n`);
+    else console.error(`\n  ${join(out, "crash.json")}${result.video ? `\n  ${result.video.mp4 || result.video.webm}` : ""}\n  next: npx agent-led-growth report --from ${out}\n`);
   });
 
 program
@@ -668,7 +668,7 @@ program
     const target = { url };
     const lines = readHistory(process.cwd(), target);
     if (!lines.length) {
-      console.error("  No previous run for this host. Run: npx @tansohq/agent-ready scan <url>");
+      console.error("  No previous run for this host. Run: npx agent-led-growth scan <url>");
       process.exit(1);
     }
     const last = lines.at(-1);

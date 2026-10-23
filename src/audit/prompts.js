@@ -39,7 +39,7 @@ function numbered(title, items) {
 }
 
 function closing(url, extra) {
-  return ["## When done", `Run \`npx @tansohq/agent-ready check ${url}\` again. This finding should be gone.${extra ? ` ${extra}` : ""} A check shows the path is documented; only a real agent run shows it works.`].join("\n");
+  return ["## When done", `Run \`npx agent-led-growth check ${url}\` again. This finding should be gone.${extra ? ` ${extra}` : ""} A check shows the path is documented; only a real agent run shows it works.`].join("\n");
 }
 
 const RATE_LIMIT = "Rate-limit by client IP and globally per hour. Take the client IP from the socket or from a proxy that overwrites X-Forwarded-For; never trust a client-appended X-Forwarded-For.";
