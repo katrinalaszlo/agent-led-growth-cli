@@ -163,6 +163,7 @@ Commit `alg.yml` so CI reuses your answers. `test` needs Claude Code installed a
 | --- | --- |
 | `--check` | Show the plan, run nothing. Free. |
 | `--yes` | Skip the confirmation; save an inferred `verify_call` to `alg.yml`. |
+| `--skip-verify` | Test the signup only. The agent's key is not checked, so no `verify_call` is needed. |
 | `--max-budget-usd <n>` | Model-use cap, default 5. Checked after each turn, so a run can end slightly above it. |
 | `--max-turns <n>` | Agent turn budget, default 40. |
 | `--inbox <address>` | An inbox you relay mail from, for products that email a code. Or set `AGENTMAIL_API_KEY` and each run gets its own. |
@@ -201,7 +202,7 @@ The headline and the seven steps are the same whatever the answers; the answers 
 
 ### alg.yml
 
-`check` writes it. `test` reads it, and infers a `verify_call` from your OpenAPI document when there is none: a GET that needs a key and no parameters, preferring `/me`, `/account`, `/user`, `/whoami`. A complete file:
+`check` writes it. `test` reads it, and infers a `verify_call` from your OpenAPI document when there is none: a GET that needs a key and no parameters, preferring `/me`, `/account`, `/user`, `/whoami`. With no OpenAPI document, `test` asks you at the prompt for a GET that needs a key (and the header that carries it), saves it to `alg.yml` and goes on; press Enter with nothing to skip the check for that run. Without a terminal, pass `--skip-verify`. A complete file:
 
 ```yaml
 url: yourproduct.com

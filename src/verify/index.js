@@ -54,7 +54,9 @@ export function parseVerifySpec(config) {
   return { method: (match[1] || "GET").toUpperCase(), url: match[2], body: config.verify_body || null, header: { name: header.slice(0, colon).trim(), template: header.slice(colon + 1).trim() }, expect, assert, fields, exchange, hosts, cli: registries };
 }
 
+// spec is null when verification was skipped: the agent signs up, and its key is not checked.
 export function describeSpec(spec) {
+  if (!spec) return "none: verification skipped, the agent's key is not checked";
   const assertion = spec.assert ? (spec.assert.equals === null ? `, ${spec.assert.path} present` : `, ${spec.assert.path} = ${spec.assert.equals}`) : "";
   const first = spec.exchange ? `${spec.exchange.method} ${spec.exchange.url} for a token (${spec.exchange.tokenPath}), then ` : "";
   return `${first}${spec.method} ${spec.url} with ${spec.header.name}: ${spec.header.template}; expect ${spec.expect}${assertion}`;
@@ -155,8 +157,15 @@ export async function checkKey(spec, key, { fetchImpl = fetch, fields = {} } = {
 export function networkFor(targetUrl, spec) {
   const host = new URL(targetUrl).hostname;
   const apex = registrableDomain(host);
-  const hosts = [host, apex, ...PRODUCT_SUBDOMAINS.map((s) => `${s}.${apex}`), new URL(spec.url.replace(/\{[^}]+\}/g, "x")).hostname, ...(spec.exchange ? [new URL(spec.exchange.url.replace(/\{[^}]+\}/g, "x")).hostname] : []), ...(spec.hosts || [])];
+  const hosts = [host, apex, ...PRODUCT_SUBDOMAINS.map((s) => `${s}.${apex}`)];
+  if (spec) hosts.push(new URL(spec.url.replace(/\{[^}]+\}/g, "x")).hostname, ...(spec.exchange ? [new URL(spec.exchange.url.replace(/\{[^}]+\}/g, "x")).hostname] : []), ...(spec.hosts || []));
   return [...new Set(hosts)];
+}
+
+// With no spec the check is skipped: a key the agent saved counts, and the result says it was not checked.
+async function skippedCheck() {
+  const checks = [{ id: "key_works", label: "Key works", pass: null, detail: "not checked: verification skipped (no verify_call)" }];
+  return { ok: true, status: 0, detail: checks[0].detail, objects: { checks, checkerInvalid: false, skipped: true } };
 }
 
 export function buildVerifyTask({ url, task, spec, fetchImpl = fetch }) {
@@ -165,13 +174,13 @@ export function buildVerifyTask({ url, task, spec, fetchImpl = fetch }) {
     id: "verify",
     name: host,
     url,
-    apiHost: new URL(spec.url.replace(/\{[^}]+\}/g, "x")).hostname,
+    apiHost: spec ? new URL(spec.url.replace(/\{[^}]+\}/g, "x")).hostname : host,
     network: networkFor(url, spec),
     credentialEnvName: KEY_ENV,
-    extraFields: spec.fields,
+    extraFields: spec ? spec.fields : [],
     keyPattern: /^\S{8,}$/,
     taskText: `${task}. The product is ${host}.`,
-    verify: { describe: describeSpec(spec), call: (key, runId, fields) => checkKey(spec, key, { fetchImpl, fields }) },
+    verify: { describe: describeSpec(spec), call: spec ? (key, runId, fields) => checkKey(spec, key, { fetchImpl, fields }) : skippedCheck },
   });
 }
 
@@ -184,6 +193,7 @@ const REPORTED_5XX = /\b(?:HTTP\s*(?:status)?|status(?:\s*code)?)\W{0,4}5\d\d\b|
 export function classify(result, onboarding, resultMd = "") {
   const evaluation = result.evaluation || {};
   const stages = result.reconciled?.stages || [];
+  if (evaluation.success && evaluation.objects?.skipped) return { outcome: "passed", exitCode: 0, reason: "A real agent got its own key. The key was not checked: verification was skipped. Add verify_call to alg.yml to prove it works." };
   if (evaluation.success) return { outcome: "passed", exitCode: 0, reason: "A real agent got its own key and the checker confirmed it works." };
   if (evaluation.objects?.checkerInvalid) return { outcome: "inconclusive", exitCode: 3, reason: "The verify call answers without a key, so it cannot prove the agent's key works. Pick a call that needs authentication." };
   if (stages.some((s) => s.agent?.outcome === "product_unavailable")) return { outcome: "inconclusive", exitCode: 3, reason: "The product returned server errors during the run. Try again later." };

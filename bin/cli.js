@@ -32,6 +32,7 @@ import { runStandards } from "../src/audit/standards.js";
 import { parseVerifySpec, buildVerifyTask, classify, failedStep, networkFor, describeSpec } from "../src/verify/index.js";
 import { renderVerify, renderPlan, duration } from "../src/verify/render.js";
 import { inferVerifyCall, latestInterface, latestAnswers } from "../src/verify/infer.js";
+import { askVerifyCall } from "../src/verify/wizard.js";
 import { renderPrompt } from "../src/audit/prompts.js";
 import { patternInfo } from "../src/audit/index.js";
 import { createInterface } from "node:readline/promises";
@@ -276,6 +277,7 @@ program
   .alias("verify")
   .description("A real agent (your Claude Code) signs up for and uses your product; a separate checker proves its key. Creates a real account, spends up to $5 of model use, asks first.")
   .option("-y, --yes", "skip the confirmation and save an inferred verify_call to alg.yml")
+  .option("--skip-verify", "test the signup only: the agent's key is not checked, so no verify_call is needed")
   .option("--inbox <address>", "an inbox you will relay mail from into the run's work/inbox/, for products that email a code")
   .option("--max-turns <n>", "agent turn budget", (v) => parseInt(v, 10), 40)
   .option("--max-budget-usd <usd>", "stop the agent once model use passes this many dollars (checked after each turn)", parseBudget, 5)
@@ -289,7 +291,9 @@ program
 Examples:
   alg test --check          check Claude Code and alg.yml, print the plan, run nothing
   alg test                  use url, task and verify_call from alg.yml
-                                    (no verify_call: one is taken from the product's OpenAPI document)
+                                    (no verify_call: one is taken from the product's OpenAPI document,
+                                    or you are asked for one at the prompt)
+  alg test --skip-verify    signup only; the key is not checked
   alg test --yes --json     no confirmation, JSON result (CI)`)
   .exitOverride(usageExit)
   .action(async (input, opts) => {
@@ -311,47 +315,77 @@ Examples:
       const shown = configPath.startsWith(home + sep) ? `~${configPath.slice(home.length)}` : CONFIG_FILE;
       console.error(`  ${style.dim(`Not using ${shown}: it is for ${savedFor || "no product"}.`)}`);
     }
-    const addCallHint = `Add the call that proves an agent's key works to ${CONFIG_FILE}, for example: verify_call: GET https://api.example.com/v1/me`;
+    const addCallHint = `Add the call that proves an agent's key works to ${CONFIG_FILE}, for example: verify_call: GET https://api.example.com/v1/me, or pass --skip-verify to test the signup without checking the key`;
+    const interactive = process.stdin.isTTY && !opts.json;
+    const askOnce = async (question) => {
+      const rl = createInterface({ input: process.stdin, output: process.stderr });
+      const reply = await rl.question(question).catch((err) => {
+        if (err.code === "ABORT_ERR") return "";
+        throw err;
+      });
+      rl.close();
+      return reply;
+    };
     // No verify_call: take one from the product's own OpenAPI document. It is saved only once accepted, by a
-    // person at the prompt or by --yes; otherwise it is used for this run alone.
-    let inferred = null;
-    if (!(config.verify_call || "").trim()) {
+    // person at the prompt or by --yes; otherwise it is used for this run alone. When the docs give none, a person
+    // at the terminal is asked for the call, or can skip the check; without a terminal, --skip-verify does that.
+    let chosen = null;
+    let skipped = Boolean(opts.skipVerify);
+    if (!skipped && !(config.verify_call || "").trim()) {
       const live = !opts.json && Boolean(process.stderr.isTTY);
       if (live) process.stderr.write(`  ${style.dim("Finding a call that proves the agent's key works…")}`);
-      inferred = await inferVerifyCall({ url, version: pkg.version, cwd: process.cwd() });
+      const inferred = await inferVerifyCall({ url, version: pkg.version, cwd: process.cwd() });
       if (live) process.stderr.write("\r\x1b[2K");
-      // For another product's file, the call goes in a file of this product's own, never in that one.
-      if (inferred.error && !useSaved) fail(opts, 2, "verify_call_invalid", `No verify_call for ${host}, and none could be taken from the product's docs: ${inferred.error}.`, `Run "alg check ${host}" in a folder of its own, then add the call that proves an agent's key works to the ${CONFIG_FILE} it writes, for example: verify_call: GET https://api.example.com/v1/me`);
-      if (inferred.error) fail(opts, 2, "verify_call_invalid", `${CONFIG_FILE} has no verify_call, and none could be taken from the product's docs: ${inferred.error}.`, addCallHint);
-      const from = `(from ${inferred.specUrl}${inferred.specVia ? `, linked from ${inferred.specVia}` : ""})`;
-      const willCheck = `Will check with ${inferred.call} on ${inferred.apiHost} (${inferred.headerName}) ${from}.`;
-      const offSiteNote = inferred.offSite ? `\n  This API host is on a different site than ${host}; the key the agent gets is sent there.` : "";
+      if (inferred.error && !interactive) {
+        // For another product's file, the call goes in a file of this product's own, never in that one.
+        if (!useSaved) fail(opts, 2, "verify_call_invalid", `No verify_call for ${host}, and none could be taken from the product's docs: ${inferred.error}.`, `Run "alg check ${host}" in a folder of its own, then add the call that proves an agent's key works to the ${CONFIG_FILE} it writes, for example: verify_call: GET https://api.example.com/v1/me, or pass --skip-verify to test the signup without checking the key`);
+        fail(opts, 2, "verify_call_invalid", `${CONFIG_FILE} has no verify_call, and none could be taken from the product's docs: ${inferred.error}.`, addCallHint);
+      }
       let accepted = Boolean(opts.yes);
-      if (!accepted && process.stdin.isTTY && !opts.json) {
-        const rl = createInterface({ input: process.stdin, output: process.stderr });
-        // A person reads the call and where it came from; the "Will check with" line stays for logs and agents.
-        const ask = `\n  To prove the agent's key works, we'll call your API with it after signup:\n    ${style.bold(inferred.call)}   ${style.dim(`(from ${inferred.specUrl.replace(/^https?:\/\//, "")})`)}${offSiteNote}\n  Use this call? [Y/n] `;
-        const reply = await rl.question(ask).catch((err) => {
-          if (err.code === "ABORT_ERR") return "n";
-          throw err;
-        });
-        rl.close();
-        if (!/^(y(es)?)?$/i.test(reply.trim())) {
-          console.error(`  Cancelled. Nothing saved. To use a different call, add it to ${CONFIG_FILE}, for example: verify_call: GET https://api.example.com/v1/me`);
-          process.exit(130);
+      let typed = false;
+      if (inferred.error) {
+        const answer = await askVerifyCall({ ask: askOnce, say: (l) => console.error(l), url, reason: inferred.error, style });
+        if (answer.skip) skipped = true;
+        else {
+          chosen = { ...answer, source: "typed" };
+          accepted = true;
+          typed = true;
         }
-        accepted = true;
-      } else if (!opts.json) console.error(`\n  ${willCheck}${offSiteNote}`);
-      if (!useSaved) {
+      } else {
+        chosen = { ...inferred, source: "inferred" };
+        const offSiteNote = inferred.offSite ? `\n  This API host is on a different site than ${host}; the key the agent gets is sent there.` : "";
+        if (!accepted && interactive) {
+          // A person reads the call and where it came from; the "Will check with" line stays for logs and agents.
+          const ask = `\n  To prove the agent's key works, we'll call your API with it after signup:\n    ${style.bold(inferred.call)}   ${style.dim(`(from ${inferred.specUrl.replace(/^https?:\/\//, "")})`)}${offSiteNote}\n  Use this call? [Y/n] `;
+          const reply = await askOnce(ask);
+          if (/^(y(es)?)?$/i.test(reply.trim())) accepted = true;
+          else {
+            // Not that one: the person names the call instead, or skips the check.
+            const answer = await askVerifyCall({ ask: askOnce, say: (l) => console.error(l), url, reason: null, style });
+            if (answer.skip) {
+              chosen = null;
+              skipped = true;
+            } else {
+              chosen = { ...answer, source: "typed" };
+              accepted = true;
+              typed = true;
+            }
+          }
+        } else if (!opts.json) console.error(`\n  Will check with ${inferred.call} on ${inferred.apiHost} (${inferred.headerName}) (from ${inferred.specUrl}${inferred.specVia ? `, linked from ${inferred.specVia}` : ""}).${offSiteNote}`);
+      }
+      if (skipped) {
+        if (!opts.json) console.error(`  ${style.dim("Verification skipped: the agent signs up, and its key is not checked.")}`);
+      } else if (!useSaved) {
         if (!opts.json) console.error(`  ${style.dim(`Used for this run only: ${CONFIG_FILE} here is not for ${host}.`)}`);
       } else if (accepted) {
-        writeVerifyCall(configPath, inferred);
-        if (!opts.json) console.error(`  ${style.dim(`Saved to ${CONFIG_FILE}.`)}`);
+        writeVerifyCall(configPath, chosen);
+        if (!opts.json) console.error(`  ${style.dim(`Saved to ${CONFIG_FILE}${typed ? ": the next test uses it without asking" : ""}.`)}`);
       } else if (!opts.json) console.error(`  ${style.dim(`Not saved to ${CONFIG_FILE}; pass --yes or run in a terminal to save it.`)}`);
     }
-    const spec = parseVerifySpec(inferred ? { ...config, verify_call: inferred.call, verify_header: inferred.header } : config);
-    if (spec.error) fail(opts, 2, "verify_call_invalid", spec.error, addCallHint);
-    const checker = { inferred: Boolean(inferred), inferredFrom: inferred ? inferred.specUrl : null, ...(inferred?.specVia ? { inferredVia: inferred.specVia } : {}), ...(inferred ? { apiHost: inferred.apiHost, apiHostOffSite: inferred.offSite } : {}) };
+    if (skipped && !opts.json && opts.skipVerify) console.error(`\n  ${style.dim("Verification skipped (--skip-verify): the agent signs up, and its key is not checked.")}`);
+    const spec = skipped ? null : parseVerifySpec(chosen ? { ...config, verify_call: chosen.call, verify_header: chosen.header } : config);
+    if (spec?.error) fail(opts, 2, "verify_call_invalid", spec.error, addCallHint);
+    const checker = { inferred: chosen?.source === "inferred", inferredFrom: chosen?.source === "inferred" ? chosen.specUrl : null, ...(chosen?.specVia ? { inferredVia: chosen.specVia } : {}), ...(chosen ? { apiHost: chosen.apiHost, apiHostOffSite: chosen.offSite } : {}), ...(skipped ? { skipped: true } : {}) };
     if (opts.check) {
       const claude = opts.executor === "claude-print" ? claudeStatus() : { ok: true, detail: `executor ${opts.executor}` };
       const inbox = process.env.AGENTMAIL_API_KEY ? "AgentMail: a fresh inbox for this run, deleted after" : opts.inbox ? `you relay mail from ${opts.inbox} into work/inbox/` : "none (set AGENTMAIL_API_KEY if the product emails a code or link)";
@@ -361,8 +395,8 @@ Examples:
         target: { url, host },
         task,
         claudeCode: claude,
-        agent: { hosts: networkFor(url, spec), inbox, maxTurns: opts.maxTurns, maxBudgetUsd: opts.maxBudgetUsd, saves: ["AGENT_READY_KEY", ...spec.fields] },
-        checker: { call: describeSpec(spec), calls: ["with the agent's key: must answer " + spec.expect, "with no key: must be refused (400, 401 or 403)", "with a wrong key: must be refused"], ...checker },
+        agent: { hosts: networkFor(url, spec), inbox, maxTurns: opts.maxTurns, maxBudgetUsd: opts.maxBudgetUsd, saves: ["AGENT_READY_KEY", ...(spec ? spec.fields : [])] },
+        checker: { call: describeSpec(spec), calls: spec ? ["with the agent's key: must answer " + spec.expect, "with no key: must be refused (400, 401 or 403)", "with a wrong key: must be refused"] : ["none: a key the agent saves counts, unchecked"], ...checker },
       };
       // The onboarding pattern chosen in alg.yml, as the last check's interface.json describes it.
       const onboarding = latestInterface(process.cwd(), url)?.doc.onboarding;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0 (2026-10-23)
+
+- `test` no longer stops when `alg.yml` has no `verify_call` and the product has no OpenAPI document. At a terminal it asks for a GET that needs a key (and the header that carries it, default `Authorization: Bearer {key}`), checks the answer, saves it to `alg.yml` and continues the run; Enter with nothing skips the check for that run. Answering "n" to an inferred call asks the same way instead of cancelling. Before, it printed `verify_call_invalid` and left the person to edit the file and start over.
+- `test --skip-verify`: the signup runs and the agent's key is not checked, for CI and products with no API call to prove a key. The result passes when the agent saved a key, and says the key was not checked; `--json` carries `checker.skipped: true`. Without a terminal, `verify_call_invalid` names the flag.
+
 ## 0.6.0 (2026-10-22)
 
 - One name. The command is `alg` (`npx agent-led-growth` still runs it); the config file is `alg.yml` and the run folder `.alg/`. The skills are `alg` and `alg-test`, the plugin `agent-led-growth`. `agent-ready`, `agent-ready.yml` and `.agent-ready/` are gone.
