@@ -254,4 +254,4 @@ npx agent-led-growth test --json --yes     # creates a real account; ask the dev
 
 Each fix prompt is written for a coding agent: read `files.prompts[0]`, make the change, run its acceptance tests, deploy, run `check` again.
 
-Source and issues: https://github.com/katrinalaszlo/agent-led-growth-cli. MIT.
+Source: https://github.com/katrinalaszlo/score (development) and https://github.com/katrinalaszlo/agent-led-growth-cli (the published build, where issues go). MIT.
