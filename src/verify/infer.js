@@ -5,7 +5,7 @@ import { buildInterface } from "../interface/index.js";
 import { sameSite } from "../interface/sources.js";
 import { OUT_DIR } from "../history/index.js";
 
-// agent-ready.yml without a verify_call: take the call from the product's own OpenAPI document. The pick is a GET
+// alg.yml without a verify_call: take the call from the product's own OpenAPI document. The pick is a GET
 // that needs a key (a bearer token or an API key header) and has no required parameters, on servers[0],
 // preferring a path that reads the caller's own account.
 const PREFERRED = /\/(?:me|whoami|account|user|viewer)\/?$/i;
@@ -134,8 +134,8 @@ export function latestInterface(cwd, url) {
   return null;
 }
 
-// The task and answers of the product's latest check run here (its audit-report.json), as agent-ready.yml keys, or
-// {} when there is none. test uses them when agent-ready.yml is missing or for another product.
+// The task and answers of the product's latest check run here (its audit-report.json), as alg.yml keys, or
+// {} when there is none. test uses them when alg.yml is missing or for another product.
 export function latestAnswers(cwd, url) {
   const dir = join(cwd, OUT_DIR, new URL(url).host);
   if (!existsSync(dir)) return {};

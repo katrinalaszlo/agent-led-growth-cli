@@ -1,20 +1,20 @@
 ---
-name: agent-ready-test
-description: "Have a real agent sign up for the developer's product and check the key it got, using agent-ready test. Creates a real account on the product and spends model money through the developer's Claude Code. Run only when the developer explicitly asks for a test run."
+name: alg-test
+description: "Have a real agent sign up for the developer's product and check the key it got, using alg test. Creates a real account on the product and spends model money through the developer's Claude Code. Run only when the developer explicitly asks for a test run."
 disable-model-invocation: true
 ---
 
-# agent-ready test
+# alg test
 
-`npx agent-led-growth test` starts a separate Claude Code agent that tries the task in `agent-ready.yml` on the product. The checker then calls the product's API with the agent's key (must succeed), with no key and with a wrong key (both must be refused with 400, 401 or 403), using `verify_call` or a call from the OpenAPI document. Name the product (`test <url>`): `agent-ready.yml` is then used only when its `url` is that product, so a file left for another product is never used or changed. This skill is `/agent-ready-test`.
+`npx agent-led-growth test` starts a separate Claude Code agent that tries the task in `alg.yml` on the product. The checker then calls the product's API with the agent's key (must succeed), with no key and with a wrong key (both must be refused with 400, 401 or 403), using `verify_call` or a call from the OpenAPI document. Name the product (`test <url>`): `alg.yml` is then used only when its `url` is that product, so a file left for another product is never used or changed. This skill is `/alg-test`.
 
 A run creates a real account on the product and uses the developer's Claude Code. Model use is capped at $5 by default (`--max-budget-usd`). Runs in October 2026 cost $0.06 to $0.47; cost depends on the model the developer's Claude Code uses and on how many turns the agent takes. Never start a real run without the developer's explicit yes in this conversation.
 
 ## 1. The config
 
-`test` reads `agent-ready.yml` in the current directory. If it is missing, run `npx agent-led-growth check <url> --json --yes` first, which writes it.
+`test` reads `alg.yml` in the current directory. If it is missing, run `npx agent-led-growth check <url> --json --yes` first, which writes it.
 
-With no `verify_call`, `test` infers one from the product's OpenAPI document: a GET that needs a key (bearer, or an API key header) and has no required parameters, preferring `/me`, `/account`, `/user` or `/whoami`, on the document's first server. An API key in the `Authorization` header gets the prefix the document gives (`Authorization: Token {key}` when it says "Prefix your key with 'Token '"); with no documented prefix that call is skipped. The plan shows the call's API host (`checker.apiHost`) and, when it is on a different site than the product (`checker.apiHostOffSite`), says the key the agent gets is sent there. Tell the developer which host the key goes to. When the product's own OpenAPI document has none, it tries the OpenAPI documents its `llms.txt`, `auth.md` and other agent files link to on the same registrable domain (such as `app.` or `api.` hosts). It reuses the latest `.agent-ready/<host>/*/interface.json` from `check`, or reads the public pages again. `--yes` accepts the call and saves it to `agent-ready.yml`; without `--yes` and without a terminal it is used for that run and not saved. With `--json`, the plan and the result carry `checker.inferred: true` and `checker.inferredFrom`, and `checker.inferredVia` (the page that linked the document) when it came from a link. Show the developer the inferred call before a real run. When nothing fits, `test` exits `2` with `verify_call_invalid`; then add the call yourself.
+With no `verify_call`, `test` infers one from the product's OpenAPI document: a GET that needs a key (bearer, or an API key header) and has no required parameters, preferring `/me`, `/account`, `/user` or `/whoami`, on the document's first server. An API key in the `Authorization` header gets the prefix the document gives (`Authorization: Token {key}` when it says "Prefix your key with 'Token '"); with no documented prefix that call is skipped. The plan shows the call's API host (`checker.apiHost`) and, when it is on a different site than the product (`checker.apiHostOffSite`), says the key the agent gets is sent there. Tell the developer which host the key goes to. When the product's own OpenAPI document has none, it tries the OpenAPI documents its `llms.txt`, `auth.md` and other agent files link to on the same registrable domain (such as `app.` or `api.` hosts). It reuses the latest `.alg/<host>/*/interface.json` from `check`, or reads the public pages again. `--yes` accepts the call and saves it to `alg.yml`; without `--yes` and without a terminal it is used for that run and not saved. With `--json`, the plan and the result carry `checker.inferred: true` and `checker.inferredFrom`, and `checker.inferredVia` (the page that linked the document) when it came from a link. Show the developer the inferred call before a real run. When nothing fits, `test` exits `2` with `verify_call_invalid`; then add the call yourself.
 
 To choose the call, add it. Pick an authenticated read from the product's own API docs that refuses a request without a key:
 
@@ -41,7 +41,7 @@ Do not tell the agent where to save its key in `task`; the run asks it to write 
 npx agent-led-growth test <url> --check --json
 ```
 
-This starts no agent and sends no request to the product, except the public GETs that infer a missing `verify_call`. It prints `agent-ready/verify-plan@1`: whether Claude Code is installed and signed in (`claudeCode`), the hosts the agent may reach, the inbox, the turn and spending limits, what the agent saves and the calls the checker makes. It exits `0` when ready and `2` when not: no product named and no agent-ready.yml (`config_missing`), no usable call (`verify_call_invalid`), or Claude Code missing or signed out (the fix is in `claudeCode.hint`).
+This starts no agent and sends no request to the product, except the public GETs that infer a missing `verify_call`. It prints `agent-ready/verify-plan@1`: whether Claude Code is installed and signed in (`claudeCode`), the hosts the agent may reach, the inbox, the turn and spending limits, what the agent saves and the calls the checker makes. It exits `0` when ready and `2` when not: no product named and no alg.yml (`config_missing`), no usable call (`verify_call_invalid`), or Claude Code missing or signed out (the fix is in `claudeCode.hint`).
 
 ## 3. Ask, then run
 

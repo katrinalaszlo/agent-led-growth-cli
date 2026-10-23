@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, appendFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 
-export const OUT_DIR = ".agent-ready";
+export const OUT_DIR = ".alg";
 
 export function historyPath(baseDir) {
   return join(baseDir, OUT_DIR, "history.jsonl");

@@ -1,6 +1,6 @@
 import { wrap } from "../audit/render.js";
 
-// Terminal output for `agent-ready test`, in the same layout as audit: one row per check, the result after.
+// Terminal output for `alg test`, in the same layout as audit: one row per check, the result after.
 
 const OUTCOME = { passed: "PASS", handoff: "PASS (handoff)", failed: "FAIL", inconclusive: "INCONCLUSIVE" };
 
@@ -28,7 +28,7 @@ export function verifyRows(result) {
 }
 
 export function renderVerify({ host, task, result, verdict, folder, promptFile }, style) {
-  const out = ["", `  ${style.bold("agent-ready test")} · ${host}`, ...wrap(`Task: ${task}`, 76).map((l) => `  ${style.dim(l)}`), ""];
+  const out = ["", `  ${style.bold("alg test")} · ${host}`, ...wrap(`Task: ${task}`, 76).map((l) => `  ${style.dim(l)}`), ""];
   // Same width rule as audit: every line fits 80 columns, continuation lines indented under the detail.
   for (const r of verifyRows(result)) {
     const [first = "", ...rest] = wrap(r.detail, 80 - 23);
@@ -42,14 +42,14 @@ export function renderVerify({ host, task, result, verdict, folder, promptFile }
   const ran = typeof execution.durationMs === "number" ? `ran ${duration(execution.durationMs)} · ` : "";
   out.push(`  ${style.dim(`${ran}${execution.turns ?? "?"} turns${cost} · evidence in ${folder}/`)}`);
   if (promptFile) out.push("", `  ${style.bold("Next")}  paste ${promptFile} into your coding agent,`, `        then deploy, run ${style.bold(`npx agent-led-growth check ${host}`)} again,`, "        and test again");
-  else if (verdict.outcome === "passed" || verdict.outcome === "handoff") out.push("", ...wrap("Keep it passing: hosted runs, on a schedule with an email when this test breaks, are coming. Join the waitlist at tansohq.com.", 76).map((l) => `  ${style.dim(l)}`));
+  else if (verdict.outcome === "passed" || verdict.outcome === "handoff") out.push("", `  ${style.dim("Keep it passing in CI:")}`, `  ${style.bold(`npx agent-led-growth test ${host} --yes --json`)}`);
   out.push("");
   return out;
 }
 
 // `test --check`: what a run would do, in the same row layout, so the one paid run holds no surprises.
 export function renderPlan(plan, style) {
-  const out = ["", `  ${style.bold("agent-ready test --check")} · ${plan.target.host}`, ...wrap(`Task: ${plan.task}`, 76).map((l) => `  ${style.dim(l)}`), ""];
+  const out = ["", `  ${style.bold("alg test --check")} · ${plan.target.host}`, ...wrap(`Task: ${plan.task}`, 76).map((l) => `  ${style.dim(l)}`), ""];
   const row = (pass, label, detail) => {
     const [first = "", ...rest] = wrap(detail, 80 - 23);
     out.push(`  ${mark(pass, style)} ${label.padEnd(18)} ${first}`);
@@ -64,13 +64,13 @@ export function renderPlan(plan, style) {
   if (plan.checker.inferred) {
     row(null, "API host", `${plan.checker.apiHost} (from ${plan.checker.inferredFrom}${plan.checker.inferredVia ? `, linked from ${plan.checker.inferredVia}` : ""})`);
     if (plan.checker.apiHostOffSite) row(null, "", `This API host is on a different site than ${plan.target.host}; the key the agent gets is sent there.`);
-    row(null, "", "inferred; set verify_call in agent-ready.yml to choose another");
+    row(null, "", "inferred; set verify_call in alg.yml to choose another");
   }
   for (const c of plan.checker.calls) row(null, "", c);
   out.push("");
   if (plan.ready) out.push(`  ${style.bold(style.green("READY"))}  Nothing ran. Start the agent with ${style.bold("npx agent-led-growth test")}`);
   else out.push(`  ${style.bold(style.red("NOT READY"))}  ${plan.claudeCode.hint}`);
   for (const warning of plan.warnings || []) for (const line of wrap(warning, 76)) out.push(`  ${style.yellow(line)}`);
-  out.push(`  ${style.dim("A host the agent needs is missing? Add it to verify_hosts in agent-ready.yml.")}`, "");
+  out.push(`  ${style.dim("A host the agent needs is missing? Add it to verify_hosts in alg.yml.")}`, "");
   return out;
 }

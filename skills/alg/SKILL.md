@@ -1,15 +1,15 @@
 ---
-name: agent-ready
-description: "Check whether an AI agent can find, sign up for, get a key to, use and pay for a product without a person, using the agent-ready CLI. Reads public pages only and writes one fix prompt per gap. Use when the developer asks if agents can sign up for or use their product, asks about agent readiness, agent onboarding, llms.txt or agent signup, or wants to re-check after a fix. Also use when they ask to run agent-ready test: this skill says how to start it safely."
+name: alg
+description: "Check whether an AI agent can find, sign up for, get a key to, use and pay for a product without a person, using the alg CLI. Reads public pages only and writes one fix prompt per gap. Use when the developer asks if agents can sign up for or use their product, asks about agent readiness, agent onboarding, llms.txt or agent signup, or wants to re-check after a fix. Also use when they ask to run alg test: this skill says how to start it safely."
 ---
 
-# agent-ready check
+# alg check
 
-`npx agent-led-growth check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing to the product, creates no account and costs nothing (it writes only `agent-ready.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part sends the product's URL to two benchmark services, Cloudflare's isitagentready.com and AgentGrade's, spawns `npx` and takes usually 1-3 minutes, up to 15 on a large site; `--no-standards` skips it when the developer wants only the seven steps, fast, or does not want the URL sent anywhere.
+`npx agent-led-growth check <url>` reads a product's public pages with GET requests, shows seven steps (Discover, Understand, Sign up, Access, Use, Pay, Manage) and writes a fix prompt for each gap. It submits nothing to the product, creates no account and costs nothing (it writes only `alg.yml` and a run folder), so you may run it whenever the developer asks about their product. After the seven steps it runs the aeo-ready standards catalog (five third-party benchmarks, about 125 checks of the public surface: llms.txt, MCP and A2A cards, x402, content negotiation and more). That part sends the product's URL to two benchmark services, Cloudflare's isitagentready.com and AgentGrade's, spawns `npx` and takes usually 1-3 minutes, up to 15 on a large site; `--no-standards` skips it when the developer wants only the seven steps, fast, or does not want the URL sent anywhere.
 
 ## If the developer asks for a test
 
-Do not run `check` in its place, and do not run `test` from this skill. Explain in one or two sentences that `test` runs a real agent that creates an account on the product and spends model money through the developer's Claude Code, then point to the `agent-ready-test` skill: in Claude Code the developer starts it by typing `/agent-ready-test`. You may run the free `npx agent-led-growth test <url> --check --json` first and show the plan.
+Do not run `check` in its place, and do not run `test` from this skill. Explain in one or two sentences that `test` runs a real agent that creates an account on the product and spends model money through the developer's Claude Code, then point to the `alg-test` skill: in Claude Code the developer starts it by typing `/alg-test`. You may run the free `npx agent-led-growth test <url> --check --json` first and show the plan.
 
 ## Run it
 
@@ -19,8 +19,8 @@ npx agent-led-growth check <url> --json --yes
 
 - Needs Node 20.9 or later. The first `npx` run downloads the package.
 - `--json` prints one JSON document (`agent-ready/audit-report@1`) to stdout. Read `headline`, `steps` (each has `name`, `state`, `basis` and `reason`), `findings` (each has `step`, `title`, `severity` and `reason`) and `files`.
-- `standards` (absent with `--no-standards`) is the aeo-ready catalog: `benchmarks` (each has `name`, `score`, `maxScore`, `grade`, `passed`, `total`, `failed` with the failed checks' names, and `error` when that benchmark did not run) and a top-level `error` when aeo-ready itself did not run. These are the benchmarks' own checks and scores; they never change `headline`, `steps` or `findings`. aeo-ready runs `agentgrade-cli` and two other tools unpinned through `npx`, so the catalog changes when they do.
-- `check` never asks the three onboarding questions unless `--ask` is passed. It uses the answers in `agent-ready.yml`, or what the docs describe, or the defaults, and writes them to `agent-ready.yml` in the current directory if that file does not exist. It never overwrites one. `--yes` skips the offer to run a test next.
+- `standards` (present only with `--standards`) is the aeo-ready catalog: `benchmarks` (each has `name`, `score`, `maxScore`, `grade`, `passed`, `total`, `failed` with the failed checks' names, and `error` when that benchmark did not run) and a top-level `error` when aeo-ready itself did not run. These are the benchmarks' own checks and scores; they never change `headline`, `steps` or `findings`. aeo-ready runs `agentgrade-cli` and two other tools unpinned through `npx`, so the catalog changes when they do.
+- `check` never asks the three onboarding questions unless `--ask` is passed. It uses the answers in `alg.yml`, or what the docs describe, or the defaults, and writes them to `alg.yml` in the current directory if that file does not exist. It never overwrites one. `--yes` skips the offer to run a test next.
 - Exit codes: `0` done, `1` a fix at or above `--fail-on` was found, `2` usage error, `3` the site did not answer, `130` interrupted (with `--ask`, at a question; otherwise during the standards catalog, after the fixes were written). Errors print `agent-ready/error@1` as `{ error: { code, message, hint } }`; tell the developer the message and the hint.
 
 ## The three questions
@@ -55,7 +55,7 @@ Only when the developer asks: read the prompt file in `files.prompts`, make the 
 - Pages behind a login, and pages that render only with JavaScript.
 - Docs on another domain. It stays on the product's registrable domain. A purchase path documented on another company's site (a payments provider's catalog, such as Stripe Projects on stripe.com) is not read, so Pay says what the product's own pages document, not that no purchase API exists.
 - More than 36 requests' worth of pages per run (well-known paths plus at most 14 followed links).
-- Whether signup actually works. That needs `agent-ready test`, which runs a real agent, creates a real account and costs model use.
+- Whether signup actually works. That needs `alg test`, which runs a real agent, creates a real account and costs model use.
 
 ## Hosted runs and buying
 

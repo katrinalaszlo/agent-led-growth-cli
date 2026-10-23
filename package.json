@@ -1,11 +1,11 @@
 {
   "name": "agent-led-growth",
-  "version": "0.5.0",
-  "description": "Check whether an AI agent can sign up for and use your product, get fix prompts for your coding agent, and test with a real agent.",
+  "version": "0.6.0",
+  "description": "Can an AI agent sign up for your product, get a key, use it and pay, without a person? One command shows where it stops; a real agent proves it.",
   "type": "module",
   "bin": {
-    "agent-led-growth": "bin/cli.js",
-    "agent-ready": "bin/cli.js"
+    "alg": "bin/cli.js",
+    "agent-led-growth": "bin/cli.js"
   },
   "main": "./src/index.js",
   "scripts": {

@@ -121,7 +121,7 @@ describe("fix prompts: Sign in with AgentID", () => {
       assert.match(other, /the agent needs an AgentMail inbox and key/);
       assert.match(other, /a person approves the app's registration once in a browser/);
       assert.match(other, /AgentID is new \(launched 2026-10-06\)/);
-      assert.match(other, /set `onboarding: agent_identity` in agent-ready\.yml/);
+      assert.match(other, /set `onboarding: agent_identity` in alg\.yml/);
       assert.ok(body.indexOf("## Another option") > body.indexOf("## Acceptance tests"));
     });
   }

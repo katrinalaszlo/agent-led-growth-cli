@@ -62,7 +62,7 @@ export async function askQuestions(defaults, { input = process.stdin, output = p
       output.write(`\n  ${style.bold(q.text)}\n`);
       // What the product's agent-facing pages document is the answer already; asking again only invites a guess.
       if (current.source === "documented") {
-        output.write(`  › ${optionLabel(q.key, current.value)}${style.dim("  (documented; change it in agent-ready.yml)")}\n`);
+        output.write(`  › ${optionLabel(q.key, current.value)}${style.dim("  (documented; change it in alg.yml)")}\n`);
         answers[q.key] = current;
         continue;
       }

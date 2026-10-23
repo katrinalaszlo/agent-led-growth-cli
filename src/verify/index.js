@@ -1,8 +1,8 @@
 import { defineSignupTask } from "../harness/tasks/signup.js";
 import { PRODUCT_SUBDOMAINS, registrableDomain } from "../interface/sources.js";
 
-// agent-ready test: a real agent tries the task on the user's own product, and a separate checker decides.
-// The checker is the call the user declared in agent-ready.yml, made three times: with the agent's key (must
+// alg test: a real agent tries the task on the user's own product, and a separate checker decides.
+// The checker is the call the user declared in alg.yml, made three times: with the agent's key (must
 // succeed and pass the assertion), with no key and with a wrong key (both must be refused). That catches an
 // endpoint that answers anyone, without code written for each product.
 
@@ -10,7 +10,7 @@ import { PRODUCT_SUBDOMAINS, registrableDomain } from "../interface/sources.js";
 const REFUSED = new Set([400, 401, 403]);
 export const KEY_ENV = "AGENT_READY_KEY";
 
-// The verify_* lines of agent-ready.yml as a spec, or { error } naming what is missing.
+// The verify_* lines of alg.yml as a spec, or { error } naming what is missing.
 // A call is "GET <url>" or "POST <url>". {key} is the agent's key, and {NAME} is any other value the agent saved in
 // CREDENTIAL.env (listed in verify_fields), so a check can name the account or project the signup created.
 // verify_exchange is an optional first call that turns the key into the token the check uses, as Neon's identity
@@ -21,7 +21,7 @@ const REGISTRY_HOSTS = { npm: ["registry.npmjs.org"], pypi: ["pypi.org", "files.
 
 export function parseVerifySpec(config) {
   const callText = (config?.verify_call || "").trim();
-  if (!callText) return { error: "agent-ready.yml has no verify_call. Add the call that proves a key works, for example: verify_call: GET https://api.example.com/v1/me" };
+  if (!callText) return { error: "alg.yml has no verify_call. Add the call that proves a key works, for example: verify_call: GET https://api.example.com/v1/me" };
   const match = CALL.exec(callText);
   if (!match) return { error: `verify_call must be "GET <full URL>" or "POST <full URL>", not "${callText}"` };
   const header = (config.verify_header || "Authorization: Bearer {key}").trim();
@@ -120,7 +120,7 @@ async function call(spec, key, values, fetchImpl) {
 }
 
 // The three calls. checkerInvalid means the declared call proves nothing (it answers without a key), which is a
-// problem with agent-ready.yml, not with the product or the agent. fields are the other values in CREDENTIAL.env.
+// problem with alg.yml, not with the product or the agent. fields are the other values in CREDENTIAL.env.
 export async function checkKey(spec, key, { fetchImpl = fetch, fields = {} } = {}) {
   const values = Object.fromEntries(spec.fields.map((f) => [f, fields[f]]).filter(([, v]) => v));
   const missing = spec.fields.filter((f) => !values[f]);

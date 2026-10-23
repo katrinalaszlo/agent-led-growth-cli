@@ -410,7 +410,7 @@ describe("verify: output", () => {
   it("every line fits 80 columns, even with a long check URL", () => {
     const long = "GET https://api.some-very-long-product-name.example.com/v1/organizations/current/members/me → 200; id = \"acct_123\"";
     const result = { evaluation: { checks: [{ id: "credential_acquired", pass: true }], objects: { checks: [{ label: "Key works", pass: true, detail: long }, { label: "No key refused", pass: true, detail: "without a key → 401" }] } }, execution: { turns: 9, costUsd: 0.2 } };
-    const lines = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "passed", reason: "ok" }, folder: ".agent-ready/x", promptFile: null }, makeStyle(false));
+    const lines = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "passed", reason: "ok" }, folder: ".alg/x", promptFile: null }, makeStyle(false));
     for (const line of lines) assert.ok([...line].length <= 80, line);
     assert.ok(lines.some((l) => l.includes("members/me")));
   });
@@ -418,9 +418,9 @@ describe("verify: output", () => {
   it("after a pass it says how to keep it passing; after a fail it says to deploy, check and test again", () => {
     const result = { evaluation: { checks: [{ id: "credential_acquired", pass: true }], objects: { checks: [{ label: "Key works", pass: true, detail: "200" }] } }, execution: { turns: 9, costUsd: 0.2 } };
     const style = makeStyle(false);
-    const passed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "passed", reason: "ok" }, folder: ".agent-ready/x", promptFile: null }, style);
-    assert.match(passed.join("\n"), /Keep it passing: hosted runs, on a schedule with an email when this test\s+breaks, are coming\. Join the waitlist at tansohq\.com\./);
-    const failed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "failed", reason: "no" }, folder: ".agent-ready/x", promptFile: "prompts/01-signup.md" }, style);
+    const passed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "passed", reason: "ok" }, folder: ".alg/x", promptFile: null }, style);
+    assert.match(passed.join("\n"), /Keep it passing in CI:\n {2}npx agent-led-growth test example\.com --yes --json/);
+    const failed = renderVerify({ host: "example.com", task: "Sign up", result, verdict: { outcome: "failed", reason: "no" }, folder: ".alg/x", promptFile: "prompts/01-signup.md" }, style);
     assert.match(failed.join("\n"), /then deploy, run npx agent-led-growth check example\.com again,\n {8}and test again/);
     assert.doesNotMatch(failed.join("\n"), /Keep it passing/);
     for (const line of [...passed, ...failed]) assert.ok([...line].length <= 80, line);
@@ -430,48 +430,48 @@ describe("verify: output", () => {
 describe("verify: command", () => {
   const runCli = (args, cwd) => spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1" } });
 
-  it("without agent-ready.yml it exits 2 and says to run check first", () => {
+  it("without alg.yml it exits 2 and says to run check first", () => {
     const r = runCli(["verify"], mkdtempSync(join(tmpdir(), "verify-cli-")));
     assert.equal(r.status, 2);
-    assert.match(r.stderr, /Name the product, as in "agent-ready test example\.com", or run "agent-ready check <url> --yes" first/);
+    assert.match(r.stderr, /Name the product, as in "alg test example\.com", or run "alg check <url> --yes" first/);
   });
 
-  // agent-ready.yml for neon.com, with a verify_call: naming another product must never send its key there.
-  it("test <product> does not use an agent-ready.yml for another product, and leaves it unchanged", () => {
+  // alg.yml for neon.com, with a verify_call: naming another product must never send its key there.
+  it("test <product> does not use an alg.yml for another product, and leaves it unchanged", () => {
     const { cwd, env } = checkIn(fakeClaude(true));
-    const before = readFileSync(join(cwd, "agent-ready.yml"), "utf8");
+    const before = readFileSync(join(cwd, "alg.yml"), "utf8");
     const r = spawnSync(process.execPath, [CLI, "test", "127.0.0.1:9", "--check"], { cwd, encoding: "utf8", env });
     assert.equal(r.status, 2, r.stderr);
-    assert.match(r.stderr, /Not using agent-ready\.yml: it is for neon\.com\./);
+    assert.match(r.stderr, /Not using alg\.yml: it is for neon\.com\./);
     assert.match(r.stderr, /No verify_call for 127\.0\.0\.1:9, and none could be taken from the product's docs/);
-    assert.match(r.stderr, /Run "agent-ready check 127\.0\.0\.1:9" in a folder of its own/);
+    assert.match(r.stderr, /Run "alg check 127\.0\.0\.1:9" in a folder of its own/);
     assert.doesNotMatch(r.stderr, /claimable\.neon\.tech/);
-    assert.equal(readFileSync(join(cwd, "agent-ready.yml"), "utf8"), before);
+    assert.equal(readFileSync(join(cwd, "alg.yml"), "utf8"), before);
     const json = spawnSync(process.execPath, [CLI, "test", "127.0.0.1:9", "--check", "--json"], { cwd, encoding: "utf8", env });
     assert.equal(JSON.parse(json.stdout).error.code, "verify_call_invalid");
   });
 
-  it("test <product> uses agent-ready.yml when it is for that product", () => {
+  it("test <product> uses alg.yml when it is for that product", () => {
     const { cwd, env } = checkIn(fakeClaude(true));
     const r = spawnSync(process.execPath, [CLI, "test", "neon.com", "--check", "--json"], { cwd, encoding: "utf8", env });
     assert.equal(r.status, 0, r.stderr);
     assert.ok(JSON.parse(r.stdout).agent.hosts.includes("claimable.neon.tech"));
   });
 
-  it("test <product> with no agent-ready.yml looks for a call instead of stopping, and writes no file", () => {
+  it("test <product> with no alg.yml looks for a call instead of stopping, and writes no file", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
     const r = runCli(["test", "127.0.0.1:9", "--check", "--json"], cwd);
     assert.equal(r.status, 2);
     assert.equal(JSON.parse(r.stdout).error.code, "verify_call_invalid");
-    assert.equal(existsSync(join(cwd, "agent-ready.yml")), false);
+    assert.equal(existsSync(join(cwd, "alg.yml")), false);
   });
 
   it("latestAnswers reads the task and answers of the product's latest check, or nothing", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
     assert.deepEqual(latestAnswers(cwd, "https://acme.dev"), {});
     for (const [run, task] of [["2026-10-01T00-00-00-aaaaaa", "Old task"], ["2026-10-02T00-00-00-bbbbbb", "New task"]]) {
-      mkdirSync(join(cwd, ".agent-ready", "acme.dev", run), { recursive: true });
-      writeFileSync(join(cwd, ".agent-ready", "acme.dev", run, "audit-report.json"), JSON.stringify({ task, answers: { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "high" }, human_before: { value: "outbound" } } }));
+      mkdirSync(join(cwd, ".alg", "acme.dev", run), { recursive: true });
+      writeFileSync(join(cwd, ".alg", "acme.dev", run, "audit-report.json"), JSON.stringify({ task, answers: { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "high" }, human_before: { value: "outbound" } } }));
     }
     assert.deepEqual(latestAnswers(cwd, "https://acme.dev"), { task: "New task", onboarding: "agent_is_customer", abuse_cost: "high", human_before: "outbound" });
   });
@@ -479,7 +479,7 @@ describe("verify: command", () => {
   // Nothing listens on port 9, so the inference finds no OpenAPI document without leaving this machine.
   it("without a verify_call it exits 2 with an example", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
-    writeConfig(join(cwd, "agent-ready.yml"), { url: "127.0.0.1:9", task: "Sign up", answers: { onboarding: { value: "try_then_claim" }, abuse_cost: { value: "low" }, human_before: { value: "never" } } });
+    writeConfig(join(cwd, "alg.yml"), { url: "127.0.0.1:9", task: "Sign up", answers: { onboarding: { value: "try_then_claim" }, abuse_cost: { value: "low" }, human_before: { value: "never" } } });
     const r = runCli(["verify"], cwd);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /verify_call: GET https:\/\/api\.example\.com\/v1\/me/);
@@ -487,7 +487,7 @@ describe("verify: command", () => {
 
   it("without Claude Code installed it says how to install it, exit 2", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
-    writeFileSync(join(cwd, "agent-ready.yml"), "url: acme.dev\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://api.acme.dev/v1/me\n");
+    writeFileSync(join(cwd, "alg.yml"), "url: acme.dev\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://api.acme.dev/v1/me\n");
     const r = spawnSync(process.execPath, [CLI, "verify", "--yes"], { cwd, encoding: "utf8", env: { ...process.env, NO_COLOR: "1", PATH: dirname(process.execPath) } });
     assert.equal(r.status, 2, r.stderr);
     assert.match(r.stderr, /claude command was not found/);
@@ -495,7 +495,7 @@ describe("verify: command", () => {
 
   it("without a terminal it will not start an agent unless --yes is passed", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
-    writeFileSync(join(cwd, "agent-ready.yml"), "url: acme.dev\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://api.acme.dev/v1/me\n");
+    writeFileSync(join(cwd, "alg.yml"), "url: acme.dev\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://api.acme.dev/v1/me\n");
     const r = runCli(["verify"], cwd);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /Pass --yes/);
@@ -510,7 +510,7 @@ describe("verify: command", () => {
   };
   const checkIn = (bin) => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
-    writeFileSync(join(cwd, "agent-ready.yml"), "url: neon.com\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://claimable.neon.tech/v1/projects/{PROJECT_ID}/credentials\nverify_fields: PROJECT_ID\nverify_exchange: POST https://claimable.neon.tech/v1/oauth2/token\nverify_exchange_body: assertion={key}\nverify_exchange_token: access_token\n");
+    writeFileSync(join(cwd, "alg.yml"), "url: neon.com\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://claimable.neon.tech/v1/projects/{PROJECT_ID}/credentials\nverify_fields: PROJECT_ID\nverify_exchange: POST https://claimable.neon.tech/v1/oauth2/token\nverify_exchange_body: assertion={key}\nverify_exchange_token: access_token\n");
     const env = { ...process.env, NO_COLOR: "1", PATH: `${bin}:${process.env.PATH}` };
     delete env.ANTHROPIC_API_KEY;
     return { cwd, env };
@@ -527,13 +527,13 @@ describe("verify: command", () => {
     assert.ok(plan.agent.hosts.includes("claimable.neon.tech"));
     assert.match(plan.checker.call, /oauth2\/token for a token/);
     assert.equal(plan.agent.maxBudgetUsd, 5);
-    assert.equal(existsSync(join(cwd, ".agent-ready")), false);
+    assert.equal(existsSync(join(cwd, ".alg")), false);
   });
 
   it("--check warns when the chosen pattern needs an inbox and none is set, and stays ready", () => {
     const { cwd, env } = checkIn(fakeClaude(true));
     delete env.AGENTMAIL_API_KEY;
-    const run = join(cwd, ".agent-ready", "neon.com", "2026-10-09T00-00-00-aaaaaa");
+    const run = join(cwd, ".alg", "neon.com", "2026-10-09T00-00-00-aaaaaa");
     mkdirSync(run, { recursive: true });
     writeFileSync(join(run, "interface.json"), JSON.stringify({ onboarding: { primary: "try_then_claim", patterns: [{ id: "try_then_claim", needs: ["inbox"] }] } }));
     const warning = "The product's docs mention an emailed code or link and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive.";
@@ -561,7 +561,7 @@ describe("verify: command", () => {
 
   it("keeps the exchange and field lines too when the answers are rewritten", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
-    const path = join(cwd, "agent-ready.yml");
+    const path = join(cwd, "alg.yml");
     writeFileSync(path, "url: neon.com\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://claimable.neon.tech/v1/projects/{PROJECT_ID}/credentials\nverify_fields: PROJECT_ID\nverify_exchange: POST https://claimable.neon.tech/v1/oauth2/token\nverify_exchange_body: grant_type=x&assertion={key}\nverify_exchange_token: access_token\n");
     writeConfig(path, { url: "neon.com", task: "Sign up", answers: { onboarding: { value: "try_then_claim" }, abuse_cost: { value: "low" }, human_before: { value: "never" } } });
     const config = readConfig(path);
@@ -575,7 +575,7 @@ describe("verify: command", () => {
 
   it("re-answering the audit questions keeps the verify lines the user filled in", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
-    const path = join(cwd, "agent-ready.yml");
+    const path = join(cwd, "alg.yml");
     writeFileSync(path, "url: acme.dev\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://api.acme.dev/v1/me\nverify_assert: id\n");
     writeConfig(path, { url: "acme.dev", task: "Sign up", answers: { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "low" }, human_before: { value: "never" } } });
     const config = readConfig(path);
@@ -586,7 +586,7 @@ describe("verify: command", () => {
 
   it("re-answering for another host drops the old product's verify lines, so its key never goes there", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-cli-"));
-    const path = join(cwd, "agent-ready.yml");
+    const path = join(cwd, "alg.yml");
     writeFileSync(path, "url: otherproduct.example\ntask: Sign up\nonboarding: try_then_claim\nverify_call: GET https://api.otherproduct.example/v1/me\nverify_header: Authorization: Bearer {key}\nverify_hosts: auth.otherproduct.example\n");
     const answers = { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "low" }, human_before: { value: "never" } };
     assert.deepEqual(writeConfig(path, { url: "acme.dev", task: "Sign up", answers }), { droppedVerifyFor: "otherproduct.example" });

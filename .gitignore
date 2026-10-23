@@ -1,4 +1,4 @@
 node_modules/
-.agent-ready/
+.alg/
 .aeo-ready/
-agent-ready.yml
+alg.yml

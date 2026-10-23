@@ -20,7 +20,7 @@ export const MODES = ["signup", "given", "none"];
 // Inspect → journey (rules) → execute (agent, confined) → evaluate (deterministic) → reconcile. One task, one product.
 // mode signup: the agent signs up as a synthetic persona with its own inbox and must obtain its own key (creates an
 // account; needs the operator's explicit go). mode given: the key is injected. mode none: no credential, stop early.
-// taskModule: a task built at run time (agent-ready verify builds one from agent-ready.yml) instead of a built-in id.
+// taskModule: a task built at run time (alg verify builds one from alg.yml) instead of a built-in id.
 // noInbox: signup without any mailbox, for products whose agent signup needs no email.
 export async function runHarness({ taskId, taskModule = null, runId, outDir, version, mode = null, inboxAddress = null, noInbox = false, executorName, maxTurns, maxBudgetUsd = null, model, log = () => {} }) {
   const mod = taskModule || TASKS[taskId];

@@ -105,7 +105,7 @@ export function heroPlan(report, previousReport, { label = "run 01", fixCount = 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agent-ready hero: ${esc(label)}</title>
+<title>alg hero: ${esc(label)}</title>
 <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@500,700&display=swap">
 <style>
 :root{--ink:#193126;--line:#dce3d8;--muted:#53645a;--sage:#eef3e9;--forest:#0f4d36;--bg:#f4f6f2;--term:#12201a;--termfg:#d7e6dc;--warn:#9b5c39;--ok:#44783e}

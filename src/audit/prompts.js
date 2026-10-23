@@ -20,14 +20,14 @@ const HUMAN_RULE = {
 
 function whySection(finding, doc) {
   const urls = finding.basedOn.map((id) => doc.observations.find((o) => o.id === id)?.url).filter(Boolean);
-  const lines = ["## Why", `agent-ready check found: ${finding.reason}`];
+  const lines = ["## Why", `alg check found: ${finding.reason}`];
   if (urls.length) lines.push(`Evidence: ${[...new Set(urls)].slice(0, 5).join(", ")}`);
   return lines.join("\n");
 }
 
 function modelSection(pattern, answers) {
   const rule = HUMAN_RULE[answers?.human_before?.value];
-  return ["## Onboarding model", `${pattern.name}. A person steps in: ${pattern.humanBoundary}`, ...(rule ? [rule] : []), "Chosen in agent-ready.yml. If this is wrong, change it there and run the check again."].join("\n");
+  return ["## Onboarding model", `${pattern.name}. A person steps in: ${pattern.humanBoundary}`, ...(rule ? [rule] : []), "Chosen in alg.yml. If this is wrong, change it there and run the check again."].join("\n");
 }
 
 function list(title, items) {
@@ -147,14 +147,14 @@ function agentIdBuild(answers) {
       "The signed-in agent can get an API key, and the key authenticates a read call.",
       "The API key never appears in logs.",
     ],
-    other: "## Another option\nIf agents should act for a person rather than as themselves, an OAuth device authorization flow (RFC 8628) on the existing login lets a person approve a scoped token for the agent, with no AgentMail inbox needed. To get that prompt, set `onboarding: existing_account` in agent-ready.yml and run the check again.",
+    other: "## Another option\nIf agents should act for a person rather than as themselves, an OAuth device authorization flow (RFC 8628) on the existing login lets a person approve a scoped token for the agent, with no AgentMail inbox needed. To get that prompt, set `onboarding: existing_account` in alg.yml and run the check again.",
     closingExtra: `\`check\` recognizes "Sign in with AgentID" on the product's own pages, such as the sentence "${AGENTID_DOC_SENTENCE}" in /auth.md or /llms.txt, and Sign up then names AgentID.`,
   };
 }
 
 // For agent-first models that build their own signup endpoint: AgentID is a shorter path when the product already has
 // an OpenID Connect sign-in. Never the only path, and its costs said plainly.
-const AGENTID_OTHER = "## Another option\nIf the product already has an OpenID Connect sign-in (Clerk, Auth0, Supabase, Better Auth, Auth.js, or its own), it can accept AgentID instead of building the signup endpoint above. AgentID is AgentMail's OpenID Connect provider for agents (issuer https://auth.agentid.com), free for apps; `npx @agentmail/agentid-cli init` sets it up. The tradeoffs: the agent needs an AgentMail inbox and key, so an agent without one cannot use this path; a person approves the app's registration once in a browser; and AgentID is new (launched 2026-10-06). To get that prompt instead, set `onboarding: agent_identity` in agent-ready.yml and run the check again.";
+const AGENTID_OTHER = "## Another option\nIf the product already has an OpenID Connect sign-in (Clerk, Auth0, Supabase, Better Auth, Auth.js, or its own), it can accept AgentID instead of building the signup endpoint above. AgentID is AgentMail's OpenID Connect provider for agents (issuer https://auth.agentid.com), free for apps; `npx @agentmail/agentid-cli init` sets it up. The tradeoffs: the agent needs an AgentMail inbox and key, so an agent without one cannot use this path; a person approves the app's registration once in a browser; and AgentID is new (launched 2026-10-06). To get that prompt instead, set `onboarding: agent_identity` in alg.yml and run the check again.";
 
 function signupBuild(pattern, answers) {
   const highAbuse = answers.abuse_cost.value === "high";

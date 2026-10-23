@@ -47,7 +47,7 @@ const frameSize = (value) => {
 };
 
 const program = new Command();
-program.name("agent-ready").description("Can an AI agent find, sign up for, use and pay for your product without a person?").version(pkg.version);
+program.name("alg").description("Can an AI agent find, sign up for, use and pay for your product without a person?").version(pkg.version);
 
 function parseClaims(value) {
   const on = value.split(",").map((s) => s.trim()).filter(Boolean);
@@ -79,27 +79,27 @@ const QUESTION_FLAGS = { onboarding: "onboarding", abuseCost: "abuse_cost", huma
 program
   .command("check <url>")
   .alias("audit")
-  .description("Check whether AI agents can find, sign up for, use and pay for your product. Free: reads public pages only (GET), takes how agents should onboard from your docs or the defaults, writes a fix prompt for each gap.")
+  .description("Read your public pages and mark the seven steps. Free, GET only, one fix prompt per gap.")
   .option("-y, --yes", "skip the question about running a test next")
-  .option("--ask", "ask the three onboarding questions in the terminal instead of taking the defaults")
+  .option("--ask", "answer the three onboarding questions yourself instead of taking them from your docs")
   .option("--task <text>", "what an agent should accomplish", DEFAULT_TASK)
-  .option("--onboarding <model>", "answer the first question: try_then_claim (Try first, claim later) | limited_until_claimed (Limited until claimed) | agent_is_customer (Agent is the customer) | agent_identity (Agent identity) | existing_account (Person sets up access first) | pay_per_request (Payment instead of signup)")
-  .option("--abuse-cost <cost>", "answer the second question: low | high")
-  .option("--human-before <when>", "answer the third question: never | outbound | always")
+  .option("--onboarding <model>", "who holds the account: try_then_claim | limited_until_claimed | agent_is_customer | agent_identity | existing_account | pay_per_request")
+  .option("--abuse-cost <cost>", "what one abusive free account costs you: low | high")
+  .option("--human-before <when>", "when a verified person must exist: never | outbound | always")
   .option("--fail-on <level>", "exit 1 when a fix at this severity or above is found: high | medium")
-  .option("--out <dir>", "run directory (default: .agent-ready/<host>/<runId>)")
+  .option("--out <dir>", "run directory (default: .alg/<host>/<runId>)")
   .option("--json", "print audit-report.json to stdout")
-  .option("--no-standards", "skip the aeo-ready standards catalog (five third-party benchmarks; usually 1-3 minutes, up to 15 on a large site; spawns npx)")
+  .option("--standards", "also score five third-party benchmarks (aeo-ready); 1-3 minutes, sends your URL to Cloudflare and AgentGrade")
   .option("--no-color", "plain output")
   .addHelpText("after", `
 Examples:
-  agent-ready check example.com                           write fix prompts, onboarding answers from the docs or defaults
-  agent-ready check example.com --ask                     answer the three onboarding questions yourself
-  agent-ready check example.com --no-standards            the seven steps only, in seconds
-  agent-ready check example.com --fail-on high --json     for CI
-  agent-ready check example.com --onboarding existing_account --human-before always --json
+  alg check example.com                           the seven steps and a fix prompt per gap, in seconds
+  alg check example.com --standards               plus five third-party benchmark scores
+  alg check example.com --ask                     answer the three onboarding questions yourself
+  alg check example.com --fail-on high --json     for CI
+  alg check example.com --onboarding existing_account --human-before always --json
                                                           answer the questions with flags (agents, CI)`)
-  .showHelpAfterError("  Try: agent-ready check example.com")
+  .showHelpAfterError("  Try: alg check example.com")
   // Usage errors exit 2, so 1 keeps meaning "fixes found". Help and --version still exit 0.
   .exitOverride(usageExit)
   .action(async (input, opts) => {
@@ -110,7 +110,7 @@ Examples:
     }
     const flagged = Object.keys(QUESTION_FLAGS).some((flag) => opts[flag]);
     const url = parseTarget(input);
-    if (!url) fail(opts, 2, "invalid_address", `"${input}" is not a web address.`, "Try: agent-ready check example.com");
+    if (!url) fail(opts, 2, "invalid_address", `"${input}" is not a web address.`, "Try: alg check example.com");
     const host = new URL(url).host;
     const style = makeStyle(Boolean(process.stderr.isTTY) && opts.color && !process.env.NO_COLOR && !opts.json);
     const say = opts.json ? () => {} : (line = "") => console.error(line);
@@ -120,13 +120,13 @@ Examples:
     // Answering any question by flag means the caller is not a person at a terminal: the rest take their defaults.
     // The questions are asked only on --ask: most people do not know the answers on a first run, and the defaults
     // (what the docs document, or the recommended model) give the same headline and steps.
-    if (opts.ask && (!process.stdin.isTTY || opts.json)) fail(opts, 2, "answers_required", "--ask needs a terminal.", `Run "agent-ready check ${host} --ask" in a terminal, or answer with --onboarding, --abuse-cost and --human-before.`);
+    if (opts.ask && (!process.stdin.isTTY || opts.json)) fail(opts, 2, "answers_required", "--ask needs a terminal.", `Run "alg check ${host} --ask" in a terminal, or answer with --onboarding, --abuse-cost and --human-before.`);
     const interactive = Boolean(opts.ask) && !flagged;
 
     const id = newRunId();
     const out = resolve(opts.out || runDir(process.cwd(), { url }, id));
     say("");
-    say(`  ${style.bold("agent-ready check")} · ${host}`);
+    say(`  ${style.bold("alg check")} · ${host}`);
     const live = !opts.json && Boolean(process.stderr.isTTY);
     if (live) process.stderr.write(`  ${style.dim("Reading public pages…")}`);
     const inspected = await inspect({ url, version: pkg.version, runId: id });
@@ -148,7 +148,7 @@ Examples:
     let savedTo = null;
     if (interactive) {
       say("");
-      say(`  ${style.bold("How should agents onboard?")} ${style.dim("Not sure? Press Enter to keep the default; change it later in agent-ready.yml.")}`);
+      say(`  ${style.bold("How should agents onboard?")} ${style.dim("Not sure? Press Enter to keep the default; change it later in alg.yml.")}`);
       try {
         answers = await askQuestions(answers, { style });
       } catch (err) {
@@ -162,7 +162,7 @@ Examples:
       if (droppedVerifyFor) say(`  ${style.dim(`Dropped verify_call for ${droppedVerifyFor}; test will pick a call for ${host}.`)}`);
     } else {
       if (!saved) {
-        // With no agent-ready.yml yet the answers are written, so test has a file to read. It never overwrites one.
+        // With no alg.yml yet the answers are written, so test has a file to read. It never overwrites one.
         writeConfig(configPath, { url: url.startsWith("https://") ? host : new URL(url).origin, task, answers });
         savedTo = `defaults saved to ${CONFIG_FILE}`;
       }
@@ -260,46 +260,46 @@ function parseBudget(value) {
 // Claude Code runs the agent. Missing or signed out, the run cannot start: a setup step, not a result.
 function claudeStatus() {
   const version = spawnSync("claude", ["--version"], { encoding: "utf8" });
-  if (version.error) return { ok: false, code: "claude_code_missing", detail: "test runs the agent with Claude Code, and the claude command was not found.", hint: "Install it from https://claude.com/claude-code, sign in, then run agent-ready test again." };
+  if (version.error) return { ok: false, code: "claude_code_missing", detail: "test runs the agent with Claude Code, and the claude command was not found.", hint: "Install it from https://claude.com/claude-code, sign in, then run alg test again." };
   const found = `Claude Code ${version.stdout.trim().split(/\s/)[0]}`;
   if (process.env.ANTHROPIC_API_KEY) return { ok: true, detail: `${found}, using ANTHROPIC_API_KEY` };
   const status = spawnSync("claude", ["auth", "status"], { encoding: "utf8" });
   let loggedIn = null;
   try { loggedIn = JSON.parse(status.stdout).loggedIn; }
   catch { return { ok: true, detail: `${found}, sign-in not checked (this version has no "claude auth status")` }; }
-  if (loggedIn === false) return { ok: false, code: "claude_code_signed_out", detail: `${found} is installed but not signed in.`, hint: 'Run "claude auth login", then run agent-ready test again.' };
+  if (loggedIn === false) return { ok: false, code: "claude_code_signed_out", detail: `${found} is installed but not signed in.`, hint: 'Run "claude auth login", then run alg test again.' };
   return { ok: true, detail: `${found}, signed in` };
 }
 
 program
   .command("test [url]")
   .alias("verify")
-  .description("Have a real agent, your Claude Code, try the task in agent-ready.yml on your product. The checker then calls your API with the agent's key, with no key and with a wrong key, using verify_call or a call from your OpenAPI document. Creates a real account on your product and spends your Claude Code's model use, capped at $5. Asks before it starts.")
-  .option("-y, --yes", "skip the confirmation and save an inferred verify_call to agent-ready.yml")
+  .description("A real agent (your Claude Code) signs up for and uses your product; a separate checker proves its key. Creates a real account, spends up to $5 of model use, asks first.")
+  .option("-y, --yes", "skip the confirmation and save an inferred verify_call to alg.yml")
   .option("--inbox <address>", "an inbox you will relay mail from into the run's work/inbox/, for products that email a code")
   .option("--max-turns <n>", "agent turn budget", (v) => parseInt(v, 10), 40)
   .option("--max-budget-usd <usd>", "stop the agent once model use passes this many dollars (checked after each turn)", parseBudget, 5)
   .option("--model <name>", "model for the agent")
   .option("--executor <name>", "agent runner", "claude-print")
-  .option("--out <dir>", "run directory (default: .agent-ready/<host>/<runId>)")
+  .option("--out <dir>", "run directory (default: .alg/<host>/<runId>)")
   .option("--check", "check the setup and print the run plan without starting the agent (free; with no verify_call it reads the product's public docs to pick one, and otherwise sends nothing to the product)")
   .option("--json", "print the result to stdout")
   .option("--no-color", "plain output")
   .addHelpText("after", `
 Examples:
-  agent-ready test --check          check Claude Code and agent-ready.yml, print the plan, run nothing
-  agent-ready test                  use url, task and verify_call from agent-ready.yml
+  alg test --check          check Claude Code and alg.yml, print the plan, run nothing
+  alg test                  use url, task and verify_call from alg.yml
                                     (no verify_call: one is taken from the product's OpenAPI document)
-  agent-ready test --yes --json     no confirmation, JSON result (CI)`)
+  alg test --yes --json     no confirmation, JSON result (CI)`)
   .exitOverride(usageExit)
   .action(async (input, opts) => {
     const configPath = join(process.cwd(), CONFIG_FILE);
     const saved = readConfig(configPath);
-    if (!saved && !input) fail(opts, 2, "config_missing", `No ${CONFIG_FILE} here.`, `Name the product, as in "agent-ready test example.com", or run "agent-ready check <url> --yes" first, which writes it.`);
+    if (!saved && !input) fail(opts, 2, "config_missing", `No ${CONFIG_FILE} here.`, `Name the product, as in "alg test example.com", or run "alg check <url> --yes" first, which writes it.`);
     const url = parseTarget(input || saved.url);
-    if (!url) fail(opts, 2, "invalid_address", `"${input || saved.url}" is not a web address.`, "Set url in agent-ready.yml, for example: url: example.com");
+    if (!url) fail(opts, 2, "invalid_address", `"${input || saved.url}" is not a web address.`, "Set url in alg.yml, for example: url: example.com");
     const host = new URL(url).host;
-    // agent-ready.yml is used only for the product it names: another product's verify_call would be sent this
+    // alg.yml is used only for the product it names: another product's verify_call would be sent this
     // product's agent key. Otherwise the answers come from this product's latest check, or the defaults.
     const savedFor = saved?.url && parseTarget(saved.url) ? new URL(parseTarget(saved.url)).host : null;
     const useSaved = Boolean(saved) && (!input || savedFor === host);
@@ -321,7 +321,7 @@ Examples:
       inferred = await inferVerifyCall({ url, version: pkg.version, cwd: process.cwd() });
       if (live) process.stderr.write("\r\x1b[2K");
       // For another product's file, the call goes in a file of this product's own, never in that one.
-      if (inferred.error && !useSaved) fail(opts, 2, "verify_call_invalid", `No verify_call for ${host}, and none could be taken from the product's docs: ${inferred.error}.`, `Run "agent-ready check ${host}" in a folder of its own, then add the call that proves an agent's key works to the ${CONFIG_FILE} it writes, for example: verify_call: GET https://api.example.com/v1/me`);
+      if (inferred.error && !useSaved) fail(opts, 2, "verify_call_invalid", `No verify_call for ${host}, and none could be taken from the product's docs: ${inferred.error}.`, `Run "alg check ${host}" in a folder of its own, then add the call that proves an agent's key works to the ${CONFIG_FILE} it writes, for example: verify_call: GET https://api.example.com/v1/me`);
       if (inferred.error) fail(opts, 2, "verify_call_invalid", `${CONFIG_FILE} has no verify_call, and none could be taken from the product's docs: ${inferred.error}.`, addCallHint);
       const from = `(from ${inferred.specUrl}${inferred.specVia ? `, linked from ${inferred.specVia}` : ""})`;
       const willCheck = `Will check with ${inferred.call} on ${inferred.apiHost} (${inferred.headerName}) ${from}.`;
@@ -364,7 +364,7 @@ Examples:
         agent: { hosts: networkFor(url, spec), inbox, maxTurns: opts.maxTurns, maxBudgetUsd: opts.maxBudgetUsd, saves: ["AGENT_READY_KEY", ...spec.fields] },
         checker: { call: describeSpec(spec), calls: ["with the agent's key: must answer " + spec.expect, "with no key: must be refused (400, 401 or 403)", "with a wrong key: must be refused"], ...checker },
       };
-      // The onboarding pattern chosen in agent-ready.yml, as the last check's interface.json describes it.
+      // The onboarding pattern chosen in alg.yml, as the last check's interface.json describes it.
       const onboarding = latestInterface(process.cwd(), url)?.doc.onboarding;
       const chosen = onboarding?.patterns?.find((p) => p.id === (config.onboarding || onboarding.primary));
       if (chosen?.needs?.includes("inbox") && !process.env.AGENTMAIL_API_KEY && !opts.inbox) plan.warnings = ["The product's docs mention an emailed code or link and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive."];
@@ -441,18 +441,18 @@ for (const name of ["account", "login", "logout"]) {
   program
     .command(name, { hidden: true })
     .allowUnknownOption()
-    .action(() => console.error("  agent-ready no longer needs a Tanso account. check is free; test uses your own Claude Code. Nothing to do."));
+    .action(() => console.error("  alg no longer needs a Tanso account. check is free; test uses your own Claude Code. Nothing to do."));
 }
 
 program
   .command("scan [url]", { hidden: true })
-  .description("Inspect a product's public surface: aeo-ready benchmarks plus agent-ready probes. GET only, never submits. Writes scan.json and a scan-only report.")
+  .description("Inspect a product's public surface: aeo-ready benchmarks plus alg probes. GET only, never submits. Writes scan.json and a scan-only report.")
   .option("-d, --dir <path>", "local build/public directory (gives agentic-seo full access)")
   .option("--catalog-slug <slug>", "tanso-oss catalog slug to probe /public/v1/catalog/<slug>/pricing.json")
   .option("--no-aeo", "skip the aeo-ready benchmarks (probes only, seconds instead of minutes)")
   .option("--task <text>", "the customer's task the agent will attempt")
   .option("--claims <list>", "pillars the product claims: web,onboarding,monetization", parseClaims)
-  .option("--out <dir>", "run directory (default: .agent-ready/<host>/<runId>)")
+  .option("--out <dir>", "run directory (default: .alg/<host>/<runId>)")
   .option("--json", "print scan.json to stdout")
   .option("--threshold <n>", "exit 1 if fewer than n stages are cleared", parseInt)
   .action(async (url, opts) => {
@@ -466,7 +466,7 @@ program
     const out = resolve(opts.out || runDir(process.cwd(), target, id));
     mkdirSync(out, { recursive: true });
     const log = opts.json ? () => {} : (r) => console.error(`  ${r.status.padEnd(5)} ${r.id.padEnd(16)} ${r.detail}`);
-    if (!opts.json) console.error(`\n  agent-ready scan — ${url || opts.dir}\n`);
+    if (!opts.json) console.error(`\n  alg scan — ${url || opts.dir}\n`);
     const result = await scan({ url, dir: opts.dir ? resolve(opts.dir) : null, catalogSlug: opts.catalogSlug, aeo: opts.aeo, vendorDir: join(process.cwd(), OUT_DIR, "vendor"), version: pkg.version, log, runId: id });
     validateScan(result);
     writeFileSync(join(out, "scan.json"), JSON.stringify(result, null, 2));
@@ -490,7 +490,7 @@ program
 program
   .command("interface <url>", { hidden: true })
   .description("URL → structured agent interface. Reads first-party public surfaces (homepage, robots, llms.txt, OpenAPI, pricing, docs) and writes interface.json: observations with provenance, extracted facts with quotes, rule-based verdicts, and unknowns. GET only.")
-  .option("--out <dir>", "run directory (default: .agent-ready/<host>/<runId>)")
+  .option("--out <dir>", "run directory (default: .alg/<host>/<runId>)")
   .option("--json", "print interface.json to stdout")
   .action(async (url, opts) => {
     if (!url.startsWith("http")) url = `https://${url}`;
@@ -498,7 +498,7 @@ program
     const out = resolve(opts.out || runDir(process.cwd(), { url }, id));
     mkdirSync(out, { recursive: true });
     const log = opts.json ? () => {} : (o) => console.error(`  ${String(o.status).padEnd(4)} ${o.role.padEnd(13)} ${o.url}${o.discoveredVia.kind === "link" ? `  ← ${o.discoveredVia.from}` : ""}`);
-    if (!opts.json) console.error(`\n  agent-ready interface — ${url}\n`);
+    if (!opts.json) console.error(`\n  alg interface — ${url}\n`);
     const doc = await buildInterface({ url, version: pkg.version, log, runId: id });
     writeFileSync(join(out, "interface.json"), JSON.stringify(doc, null, 2));
     if (opts.json) return process.stdout.write(JSON.stringify(doc, null, 2) + "\n");
@@ -516,10 +516,10 @@ program
   });
 
 program
-  .command("execute")
-  .description("Run one of the built-in example tasks against its public product with a real agent. Uses your Claude Code with no spending cap and does not ask first; --mode signup creates an account on that product. For your own product, use `agent-ready test`.")
+  .command("execute", { hidden: true })
+  .description("Run one of the built-in example tasks against its public product with a real agent. Uses your Claude Code with no spending cap and does not ask first; --mode signup creates an account on that product. For your own product, use `alg test`.")
   .requiredOption("--task <id>", `task id: ${Object.keys(TASKS).join(", ")}`)
-  .option("--out <dir>", "run directory (default: .agent-ready/<host>/<runId>)")
+  .option("--out <dir>", "run directory (default: .alg/<host>/<runId>)")
   .option("--mode <mode>", "signup (agent obtains its own key as a synthetic persona; creates an account), given (key from env), none (stop at credential_required). Default: given if the key is set, else none")
   .option("--inbox <address>", "signup mode without AGENTMAIL_API_KEY: an existing inbox address you will relay into work/inbox/")
   .option("--executor <name>", "executor implementation", "claude-print")
@@ -537,7 +537,7 @@ program
     const log = opts.json
       ? () => {}
       : (e) => console.error(e.step === "agent" ? `    ${e.kind.padEnd(11)} ${e.tool ? e.tool.padEnd(9) + " " : ""}${String(e.input || e.text || e.subject || e.subtype || "").split("\n")[0].slice(0, 110)}${e.from ? `  from ${e.from}` : ""}${e.error ? "  [error]" : ""}` : `  ${e.step.padEnd(9)} ${e.text}`);
-    if (!opts.json) console.error(`\n  agent-ready execute — ${opts.task} · ${mod.task.text}\n`);
+    if (!opts.json) console.error(`\n  alg execute — ${opts.task} · ${mod.task.text}\n`);
     const result = await runHarness({ taskId: opts.task, runId: id, outDir: out, version: pkg.version, mode: opts.mode || null, inboxAddress: opts.inbox || null, executorName: opts.executor, maxTurns: opts.maxTurns, model: opts.model || null, log });
     if (opts.json) return process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     console.error("");
@@ -564,13 +564,13 @@ program
     // The npm package carries the CLI only; the hosted server and dashboard run from the repository.
     const server = await import("../src/server.js").catch((err) => {
       if (err.code !== "ERR_MODULE_NOT_FOUND") throw err;
-      console.error("  serve runs from the agent-ready repository, not the npm package.");
+      console.error("  serve runs from the agent-led-growth repository, not the npm package.");
       process.exit(2);
     });
     const { createApp, ROUTES } = server;
     const app = createApp({ version: pkg.version, log: (m) => console.error(`  ${m}`) });
     app.listen(opts.port, () => {
-      console.error(`\n  agent-ready serve — http://localhost:${opts.port}\n`);
+      console.error(`\n  alg serve — http://localhost:${opts.port}\n`);
       for (const r of ROUTES) console.error(`  ${r.method.padEnd(5)} ${r.path.padEnd(16)} ${r.description}`);
       console.error("");
     });
@@ -606,7 +606,7 @@ program
     id = id || newRunId();
     mkdirSync(out, { recursive: true });
     const log = opts.json ? () => {} : (f) => console.error(`  ${f.result.padEnd(5)} ${f.id.padEnd(12)} ${f.quote || ""}`);
-    if (!opts.json) console.error(`\n  agent-ready crash --smoke — ${url}\n`);
+    if (!opts.json) console.error(`\n  alg crash --smoke — ${url}\n`);
     const result = await smoke({ url, outDir: out, runId: id, version: pkg.version, task: opts.task || "", log, video: Boolean(opts.video) });
     if (!result.available) {
       console.error(`  ${result.reason}`);
@@ -624,7 +624,7 @@ program
   .requiredOption("--from <dir>", "run directory holding scan.json / audit.json / crash.json (and optional run.json)")
   .option("--out <dir>", "output directory (default: the run directory)")
   .option("--previous <dir>", "earlier run directory to diff against (overrides history)")
-  .option("--no-history", "do not read or append .agent-ready/history.jsonl")
+  .option("--no-history", "do not read or append .alg/history.jsonl")
   .option("--task <text>", "the customer's task the agent attempted")
   .option("--claims <list>", "pillars the product claims: web,onboarding,monetization", parseClaims)
   .option("--json", "print report.json to stdout")
@@ -650,7 +650,7 @@ program
     if (opts.json) process.stdout.write(JSON.stringify(report, null, 2) + "\n");
     else {
       const h = report.headline;
-      console.log(`\n  agent-ready — ${report.target.url || report.target.dir}\n`);
+      console.log(`\n  alg — ${report.target.url || report.target.dir}\n`);
       console.log(`  ${h.cleared} / ${h.of} stages cleared unassisted${report.delta ? `  (was ${report.delta.headline.from.cleared} / ${report.delta.headline.from.of})` : ""}`);
       console.log(`  ${h.text}`);
       console.log(`  Level ${report.maturity.level} · ${report.maturity.label}\n`);
@@ -676,7 +676,7 @@ program
     const out = resolve(runDir(process.cwd(), target, id));
     mkdirSync(out, { recursive: true });
     const log = (r) => console.error(`  ${(r.status || r.result || "").padEnd(5)} ${r.id.padEnd(16)} ${r.detail || r.quote || ""}`);
-    console.error(`\n  agent-ready retest — ${url} (vs ${last.at.slice(0, 10)})\n`);
+    console.error(`\n  alg retest — ${url} (vs ${last.at.slice(0, 10)})\n`);
     const claims = last.claims || { web: true, onboarding: true, monetization: true };
     const scanResult = await scan({ url, aeo: opts.aeo, vendorDir: join(process.cwd(), OUT_DIR, "vendor"), version: pkg.version, log, runId: id });
     validateScan(scanResult);
@@ -693,7 +693,7 @@ program
         crashResult = null;
       }
     }
-    if (last.providersRun.includes("audit")) console.error("  note: the last run had an audit; re-run the skill's audit step to refresh it, then `agent-ready report --from " + out + "`");
+    if (last.providersRun.includes("audit")) console.error("  note: the last run had an audit; re-run the skill's audit step to refresh it, then `alg report --from " + out + "`");
     const report = merge({ scan: scanResult, crash: crashResult, task: last.task || "", claims, previous: lines, runId: id, target, version: pkg.version });
     const paths = writeReport(report, out, { assetDir: out });
     appendHistory(process.cwd(), historyLine(report));
@@ -933,7 +933,7 @@ program
 
 program
   .command("history", { hidden: true })
-  .description("Show past runs from .agent-ready/history.jsonl")
+  .description("Show past runs from .alg/history.jsonl")
   .option("--url <url>", "filter by target")
   .action((opts) => {
     const lines = readHistory(process.cwd(), opts.url ? { url: opts.url } : null);

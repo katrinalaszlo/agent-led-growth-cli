@@ -129,9 +129,9 @@ describe("audit: brief and config", () => {
     assert.match(brief, /payment, KYC and claim decisions by a real person were not tested/);
   });
 
-  it("agent-ready.yml round-trips the answers", () => {
+  it("alg.yml round-trips the answers", () => {
     const dir = mkdtempSync(join(tmpdir(), "audit-config-"));
-    const path = join(dir, "agent-ready.yml");
+    const path = join(dir, "alg.yml");
     writeConfig(path, { url: "acme.dev", task: "Sign up", answers: { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "high" }, human_before: { value: "outbound" } } });
     assert.deepEqual(readConfig(path), { url: "acme.dev", task: "Sign up", onboarding: "agent_is_customer", abuse_cost: "high", human_before: "outbound" });
   });
@@ -210,7 +210,7 @@ describe("audit: brief and config", () => {
     });
     const defaults = { onboarding: { value: "limited_until_claimed", source: "documented" }, abuse_cost: { value: "low", source: "default" }, human_before: { value: "never", source: "default" } };
     const answers = await askQuestions(defaults, { input, output, style: makeStyle(false) });
-    assert.match(written, /› Nobody yet; limited until a person claims it  \(documented; change it in agent-ready\.yml\)/);
+    assert.match(written, /› Nobody yet; limited until a person claims it  \(documented; change it in alg\.yml\)/);
     assert.equal(written.split("Enter to keep, or a number: ").length - 1, 2);
     assert.deepEqual(answers.onboarding, defaults.onboarding);
   });
@@ -282,11 +282,11 @@ describe("audit: command", () => {
 
   it("without --ask it asks nothing, says which onboarding model it took and saves the defaults", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const r = runCli(["audit", site, "--no-standards", "--out", join(cwd, "run")], cwd);
+    const r = runCli(["audit", site, "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
     assert.doesNotMatch(r.stderr, /Enter to keep, or a number/);
-    assert.match(r.stderr.replace(/\n\s+/g, " "), /Onboarding: .+ \(\w+\)\. Change it in agent-ready\.yml or with --ask\./);
-    assert.match(readFileSync(join(cwd, "agent-ready.yml"), "utf8"), /^onboarding: /m);
+    assert.match(r.stderr.replace(/\n\s+/g, " "), /Onboarding: .+ \(\w+\)\. Change it in alg\.yml or with --ask\./);
+    assert.match(readFileSync(join(cwd, "alg.yml"), "utf8"), /^onboarding: /m);
   });
 
   it("--ask without a terminal exits 2 and says what to do", () => {
@@ -309,8 +309,8 @@ describe("audit: command", () => {
     for (const f of audit.findings) assert.ok(existsSync(join(out, "prompts", f.file)), f.file);
     assert.ok(existsSync(join(out, "prompts", "ALL.md")));
     assert.match(readFileSync(join(out, "brief.md"), "utf8"), /## Decisions to confirm/);
-    // With no agent-ready.yml yet, --yes writes the defaults so verify has a file to read.
-    assert.equal(readConfig(join(cwd, "agent-ready.yml")).onboarding, audit.onboarding.chosen.id);
+    // With no alg.yml yet, --yes writes the defaults so verify has a file to read.
+    assert.equal(readConfig(join(cwd, "alg.yml")).onboarding, audit.onboarding.chosen.id);
     assert.ok(readdirSync(out).includes("interface.json"));
     assert.ok(audit.limits.includes("public pages cannot show whether a step works; a test runs a real agent"), JSON.stringify(audit.limits));
     assert.match(readFileSync(join(out, "brief.md"), "utf8"), / · checked \d{4}-\d{2}-\d{2} · /);
@@ -318,7 +318,7 @@ describe("audit: command", () => {
 
   it("says what to do next as the README's steps, before the benchmarks, and ends on the next action", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd);
+    const r = runCli(["check", site, "--yes", "--standards", "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
     // The answer comes first, from the steps that need a fix.
     assert.match(r.stderr, /Not yet\. Your pages don't show how an agent /);
@@ -332,13 +332,13 @@ describe("audit: command", () => {
     assert.match(r.stderr.trimEnd().split("\n").pop(), /^ {2}Done in .+\. Next: the fix prompt above, then check again\.$/);
     // With fixes to make, nothing waits on a menu.
     assert.doesNotMatch(r.stderr, /Pick 1-3/);
-    const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "json")], cwd);
+    const json = runCli(["check", site, "--yes", "--standards", "--json", "--out", join(cwd, "json")], cwd);
     assert.doesNotMatch(json.stdout + json.stderr, /npx agent-led-growth test/, "--json prints only the report");
   });
 
   it("runs the standards catalog by default: a Benchmarks section after Next, standards and files.standards in --json", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd);
+    const r = runCli(["check", site, "--yes", "--standards", "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
     const standardsAt = r.stderr.indexOf("Benchmarks  optional: 5 third-party scores. Sends your URL to Cloudflare");
     assert.ok(standardsAt > r.stderr.indexOf("Next  "), r.stderr);
@@ -349,7 +349,7 @@ describe("audit: command", () => {
     assert.match(r.stderr, /· Vercel {8}did not run: @vercel\/agent-readability timed out after 60s/);
     assert.ok(r.stderr.indexOf("Discover") < standardsAt, "the steps come first");
     assert.ok(existsSync(join(cwd, "run", "aeo-ready.json")));
-    const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "j")], cwd);
+    const json = runCli(["check", site, "--yes", "--standards", "--json", "--out", join(cwd, "j")], cwd);
     assert.equal(json.status, 0, json.stderr);
     const audit = JSON.parse(json.stdout);
     assert.equal(audit.standards.generator.name, "aeo-ready");
@@ -367,7 +367,7 @@ describe("audit: command", () => {
     const hang = join(cwd, "hang.mjs");
     writeFileSync(hang, "setTimeout(() => {}, 60000);\n");
     const { spawn } = await import("node:child_process");
-    const proc = spawn(process.execPath, [CLI, "check", site, "--yes", "--out", join(cwd, "run")], { cwd, env: { ...process.env, NO_COLOR: "1", AGENT_READY_AEO_CLI: hang } });
+    const proc = spawn(process.execPath, [CLI, "check", site, "--yes", "--standards", "--out", join(cwd, "run")], { cwd, env: { ...process.env, NO_COLOR: "1", AGENT_READY_AEO_CLI: hang } });
     let stderr = "";
     let sent = false;
     proc.stderr.on("data", (chunk) => {
@@ -386,13 +386,13 @@ describe("audit: command", () => {
     assert.ok(!existsSync(join(cwd, "run", "audit-report.json.tmp")));
   });
 
-  it("--no-standards skips the catalog: no standards field, no aeo-ready.json, and the section says so", () => {
+  it("without --standards the catalog is skipped: no standards field, no aeo-ready.json, and the section says so", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const r = runCli(["check", site, "--yes", "--no-standards", "--out", join(cwd, "run")], cwd);
+    const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stderr, /Benchmarks {2}skipped \(--no-standards\)/);
+    assert.match(r.stderr, /Benchmarks {2}add --standards for five third-party scores/);
     assert.ok(!existsSync(join(cwd, "run", "aeo-ready.json")));
-    const json = runCli(["check", site, "--yes", "--json", "--no-standards", "--out", join(cwd, "j")], cwd);
+    const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "j")], cwd);
     const audit = JSON.parse(json.stdout);
     assert.ok(!("standards" in audit));
     assert.equal(audit.files.standards, null);
@@ -400,10 +400,10 @@ describe("audit: command", () => {
 
   it("when aeo-ready fails, the section and --json carry its error and the check still completes", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const r = runCli(["check", site, "--yes", "--out", join(cwd, "run")], cwd, "fail");
+    const r = runCli(["check", site, "--yes", "--standards", "--out", join(cwd, "run")], cwd, "fail");
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stderr, /\n {14}aeo-ready did not run\. aeo-ready exited 1 without JSON: Warning: no network/);
-    const json = runCli(["check", site, "--yes", "--json", "--out", join(cwd, "j")], cwd, "fail");
+    const json = runCli(["check", site, "--yes", "--standards", "--json", "--out", join(cwd, "j")], cwd, "fail");
     const audit = JSON.parse(json.stdout);
     assert.equal(audit.standards.error, "aeo-ready exited 1 without JSON: Warning: no network");
     assert.deepEqual(audit.standards.benchmarks, []);
@@ -432,30 +432,30 @@ describe("audit: command", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
     const bad = runCli(["audit", "ht!tp://bad url", "--yes"], cwd);
     assert.equal(bad.status, 2);
-    assert.match(bad.stderr, /is not a web address\.\s+Try: agent-ready check example\.com/);
+    assert.match(bad.stderr, /is not a web address\.\s+Try: alg check example\.com/);
     const missing = runCli(["audit"], cwd);
     assert.equal(missing.status, 2);
-    assert.match(missing.stderr, /Try: agent-ready check example\.com/);
+    assert.match(missing.stderr, /Try: alg check example\.com/);
   });
 
   it("--help shows example commands and exits 0", () => {
     const r = runCli(["audit", "--help"], mkdtempSync(join(tmpdir(), "audit-cli-")));
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /Examples:\n  agent-ready check example\.com /);
+    assert.match(r.stdout, /Examples:\n  alg check example\.com /);
   });
 
-  it("--yes never overwrites an agent-ready.yml that is already there", () => {
+  it("--yes never overwrites an alg.yml that is already there", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const path = join(cwd, "agent-ready.yml");
+    const path = join(cwd, "alg.yml");
     writeFileSync(path, "url: other.dev\ntask: Sign up\nonboarding: agent_is_customer\nverify_call: GET https://api.other.dev/v1/me\n");
     const before = readFileSync(path, "utf8");
     assert.equal(runCli(["audit", site, "--yes", "--json", "--out", join(cwd, "c")], cwd).status, 0);
     assert.equal(readFileSync(path, "utf8"), before);
   });
 
-  it("with an agent-ready.yml for another product, check leaves it and names this product in the test commands", () => {
+  it("with an alg.yml for another product, check leaves it and names this product in the test commands", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    const path = join(cwd, "agent-ready.yml");
+    const path = join(cwd, "alg.yml");
     writeFileSync(path, "url: otherproduct.example\ntask: Sign up\nonboarding: agent_is_customer\nverify_call: GET https://api.otherproduct.example/v1/me\n");
     const before = readFileSync(path, "utf8");
     const r = runCli(["check", site, "--yes", "--out", join(cwd, "c")], cwd);
@@ -526,13 +526,13 @@ describe("audit: command", () => {
     }
   });
 
-  it("reads answers from agent-ready.yml when it matches the host", () => {
+  it("reads answers from alg.yml when it matches the host", () => {
     const cwd = mkdtempSync(join(tmpdir(), "audit-cli-"));
-    writeConfig(join(cwd, "agent-ready.yml"), { url: new URL(site).host, task: "Sign up", answers: { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "high" }, human_before: { value: "never" } } });
+    writeConfig(join(cwd, "alg.yml"), { url: new URL(site).host, task: "Sign up", answers: { onboarding: { value: "agent_is_customer" }, abuse_cost: { value: "high" }, human_before: { value: "never" } } });
     const r = runCli(["audit", site, "--json", "--out", join(cwd, "b")], cwd);
     assert.equal(r.status, 0, r.stderr);
     const audit = JSON.parse(r.stdout);
-    assert.deepEqual(audit.onboarding.chosen, { id: "agent_is_customer", name: "Agent is the customer", source: "from agent-ready.yml" });
+    assert.deepEqual(audit.onboarding.chosen, { id: "agent_is_customer", name: "Agent is the customer", source: "from alg.yml" });
   });
 });
 

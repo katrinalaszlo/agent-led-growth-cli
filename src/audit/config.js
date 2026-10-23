@@ -1,8 +1,8 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
-// agent-ready.yml at the repo root: the answers to the onboarding questions, committed so CI and later runs reuse them.
+// alg.yml at the repo root: the answers to the onboarding questions, committed so CI and later runs reuse them.
 // Flat keys only, so it is read with a line parser rather than a YAML dependency.
-export const CONFIG_FILE = "agent-ready.yml";
+export const CONFIG_FILE = "alg.yml";
 const KEYS = ["url", "task", "onboarding", "abuse_cost", "human_before", "verify_call", "verify_header", "verify_expect", "verify_assert", "verify_fields", "verify_body", "verify_exchange", "verify_exchange_body", "verify_exchange_token", "verify_hosts", "verify_cli"];
 
 export function readConfig(path) {
@@ -29,9 +29,9 @@ export function writeConfig(path, { url, task, answers }) {
   const filledIn = otherHost ? [] : verifyKeys.filter((k) => kept[k]);
   const dropped = otherHost && verifyKeys.some((k) => kept[k]) ? otherHost : null;
   const verifyLines = filledIn.length
-    ? ["# What `agent-ready test` checks: one call made with the key the agent got.", ...filledIn.map((k) => `${k}: ${kept[k]}`)]
+    ? ["# What `alg test` checks: one call made with the key the agent got.", ...filledIn.map((k) => `${k}: ${kept[k]}`)]
     : [
-        "# What `agent-ready test` checks: one call made with the key the agent got. Uncomment and fill in.",
+        "# What `alg test` checks: one call made with the key the agent got. Uncomment and fill in.",
         "# The checker also makes it with no key and with a wrong key; both must be refused (400, 401 or 403).",
         "# verify_call: GET https://api.example.com/v1/me",
         "# verify_header: Authorization: Bearer {key}",
@@ -49,7 +49,7 @@ export function writeConfig(path, { url, task, answers }) {
         "#",
         "# The agent saves its key as AGENT_READY_KEY (and each verify_fields name) in work/CREDENTIAL.env;",
         "# the task does not need to say so, but should name which value is the key when the product returns several.",
-        "# Run `agent-ready test --check` to see the plan before a real run.",
+        "# Run `alg test --check` to see the plan before a real run.",
       ];
   const lines = [
     "# agent-ready: how agents should onboard to this product. Edit and commit.",

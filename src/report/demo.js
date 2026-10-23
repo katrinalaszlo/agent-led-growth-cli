@@ -123,7 +123,7 @@ export function renderDemo(report, { assetDir = null, previousReport = null, lab
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agent-ready demo: ${esc(host)}</title>
+<title>alg demo: ${esc(host)}</title>
 <style>
 :root{--ink:#193126;--line:#dce3d8;--muted:#53645a;--sage:#eef3e9;--forest:#0f4d36;--bg:#f5f7f2}
 *{box-sizing:border-box;margin:0}

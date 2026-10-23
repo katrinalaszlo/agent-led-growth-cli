@@ -119,9 +119,9 @@ describe("standards: terminal section", () => {
     const standards = shapeStandards(ran, "1.7.9");
     const fern = standards.benchmarks.find((b) => b.id === "fern");
     fern.failed = Array.from({ length: 18 }, (_, i) => `a-long-check-name-${i + 1}`);
-    const lines = renderStandards(standards, plain, ".agent-ready/acme.com/run/aeo-ready.json");
+    const lines = renderStandards(standards, plain, ".alg/acme.com/run/aeo-ready.json");
     const text = lines.join("\n");
-    assert.match(text, /Failed checks {2}20, the first names shown\. All of them:\n {4}\.agent-ready\/acme\.com\/run\/aeo-ready\.json\n/);
+    assert.match(text, /Failed checks {2}20, the first names shown\. All of them:\n {4}\.alg\/acme\.com\/run\/aeo-ready\.json\n/);
     assert.match(text, /\n {4}Fern {9}18 {2}a-long-check-name-1, a-long-check-name-2, \+16\n/);
     for (const line of lines) assert.ok(line.length <= 80, line);
   });
@@ -129,7 +129,7 @@ describe("standards: terminal section", () => {
   it("prints aeo-ready's error when it did not run, and says so when it was skipped", () => {
     const failed = renderStandards(shapeStandards({ result: null, warnings: [], error: "aeo-ready exited 1 without JSON" }, "1.7.9"), plain).join("\n");
     assert.match(failed, /^ {14}aeo-ready did not run\. aeo-ready exited 1 without JSON/);
-    assert.equal(renderStandards(null, plain)[0], "  Benchmarks  skipped (--no-standards)");
+    assert.equal(renderStandards(null, plain)[0], "  Benchmarks  add --standards for five third-party scores (1-3 min)");
   });
 });
 

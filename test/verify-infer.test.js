@@ -91,7 +91,7 @@ function runCli(args, cwd, env) {
 
 function projectFor(base) {
   const cwd = mkdtempSync(join(tmpdir(), "verify-infer-"));
-  writeConfig(join(cwd, "agent-ready.yml"), { url: new URL(base).host, task: "Sign up", answers: ANSWERS });
+  writeConfig(join(cwd, "alg.yml"), { url: new URL(base).host, task: "Sign up", answers: ANSWERS });
   return cwd;
 }
 
@@ -246,7 +246,7 @@ describe("test: an OpenAPI document linked from the product's agent pages", () =
   it("an own document over the size cap says it could not be read, not that it answered 200", async () => {
     const fetchSource = async (url) => (url === "https://acme.dev/openapi.json" ? { ok: false, status: 200, url, contentType: "application/json", headers: {}, text: "", error: "response body larger than 5000000 bytes" } : tansoLike({ ...TANSO_LIKE, "https://acme.dev/llms.txt": ["text/plain", "# Acme\n"], "https://acme.dev/auth.md": ["text/markdown", "# Access\n"] })(url));
     const saved = mkdtempSync(join(tmpdir(), "verify-infer-saved-"));
-    const run = join(saved, ".agent-ready", "acme.dev", "2026-10-07T00-00-00-abcdef");
+    const run = join(saved, ".alg", "acme.dev", "2026-10-07T00-00-00-abcdef");
     mkdirSync(run, { recursive: true });
     writeFileSync(join(run, "interface.json"), JSON.stringify({ observations: [{ id: "obs_1", role: "openapi", url: "https://acme.dev/openapi.json", ok: true, status: 200 }], interfaces: { api: { machineReadableSpec: { verdict: "yes", basedOn: ["obs_1"] } } } }));
     const r = await inferVerifyCall({ url: "https://acme.dev/", version: "test", cwd: saved, fetchSource });
@@ -312,7 +312,7 @@ describe("test: the inferred call on the command line", () => {
 
   it("--check --json --yes plans with the inferred call, marks it inferred, and saves it keeping the other lines", async () => {
     const cwd = projectFor(product.base);
-    const before = readFileSync(join(cwd, "agent-ready.yml"), "utf8");
+    const before = readFileSync(join(cwd, "alg.yml"), "utf8");
     const r = await runCli(["test", "--check", "--json", "--yes"], cwd, env);
     assert.equal(r.status, 0, r.stderr);
     const plan = JSON.parse(r.stdout);
@@ -320,9 +320,9 @@ describe("test: the inferred call on the command line", () => {
     assert.equal(plan.checker.inferred, true);
     assert.equal(plan.checker.inferredFrom, `${product.base}openapi.json`);
     assert.match(plan.checker.call, new RegExp(`^GET ${product.base}v1/me with Authorization: Bearer \\{key\\}`));
-    const after = readFileSync(join(cwd, "agent-ready.yml"), "utf8");
-    assert.equal(readConfig(join(cwd, "agent-ready.yml")).verify_call, `GET ${product.base}v1/me`);
-    assert.equal(readConfig(join(cwd, "agent-ready.yml")).verify_header, "Authorization: Bearer {key}");
+    const after = readFileSync(join(cwd, "alg.yml"), "utf8");
+    assert.equal(readConfig(join(cwd, "alg.yml")).verify_call, `GET ${product.base}v1/me`);
+    assert.equal(readConfig(join(cwd, "alg.yml")).verify_header, "Authorization: Bearer {key}");
     const kept = before.split("\n").filter((l) => !/^#\s*verify_(call|header):/.test(l));
     for (const line of kept) assert.ok(after.split("\n").includes(line), line);
   });
@@ -332,13 +332,13 @@ describe("test: the inferred call on the command line", () => {
     const r = await runCli(["test", "--check"], cwd, env);
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stderr, new RegExp(`Will check with GET ${product.base}v1/me on 127\\.0\\.0\\.1 \\(Authorization\\) \\(from ${product.base}openapi\\.json\\)`));
-    assert.match(r.stderr, /Not saved to agent-ready\.yml/);
-    assert.equal(readConfig(join(cwd, "agent-ready.yml")).verify_call, undefined);
+    assert.match(r.stderr, /Not saved to alg\.yml/);
+    assert.equal(readConfig(join(cwd, "alg.yml")).verify_call, undefined);
   });
 
   it("reuses the latest interface.json from check instead of inspecting again", async () => {
     const cwd = projectFor(product.base);
-    const run = join(cwd, ".agent-ready", new URL(product.base).host, "2026-10-06T00-00-00-abcdef");
+    const run = join(cwd, ".alg", new URL(product.base).host, "2026-10-06T00-00-00-abcdef");
     mkdirSync(run, { recursive: true });
     const doc = { observations: [{ id: "obs_1", role: "openapi", url: `${product.base}internal/spec.json`, ok: true, status: 200 }], interfaces: { api: { machineReadableSpec: { verdict: "yes", basedOn: ["obs_1"] } } } };
     writeFileSync(join(run, "interface.json"), JSON.stringify(doc));
@@ -383,7 +383,7 @@ describe("test: the inferred call on the command line", () => {
       const checker = JSON.parse(json.stdout).checker;
       assert.equal(checker.apiHost, "console.acme-cloud.example");
       assert.equal(checker.apiHostOffSite, true);
-      assert.equal(readConfig(join(cwd, "agent-ready.yml")).verify_call, "GET https://console.acme-cloud.example/v1/account");
+      assert.equal(readConfig(join(cwd, "alg.yml")).verify_call, "GET https://console.acme-cloud.example/v1/account");
       const text = (await runCli(["test", "--check"], projectFor(offSite.base), env));
       assert.equal(text.status, 0, text.stderr);
       const out = (text.stdout + text.stderr).replace(/\s+/g, " ");
@@ -406,7 +406,7 @@ describe("test: the inferred call on the command line", () => {
 
   it("a declared verify_call is used as it is, not inferred", () => {
     const cwd = mkdtempSync(join(tmpdir(), "verify-infer-"));
-    writeFileSync(join(cwd, "agent-ready.yml"), "url: acme.dev\ntask: Sign up\nverify_call: GET https://api.acme.dev/v1/me\n");
+    writeFileSync(join(cwd, "alg.yml"), "url: acme.dev\ntask: Sign up\nverify_call: GET https://api.acme.dev/v1/me\n");
     const r = spawnSync(process.execPath, [CLI, "test", "--check", "--json"], { cwd, encoding: "utf8", env });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(JSON.parse(r.stdout).checker.inferred, false);
@@ -420,6 +420,6 @@ describe("test: the inferred call on the command line", () => {
     assert.equal(error.code, "verify_call_invalid");
     assert.match(error.message, /no verify_call, and none could be taken from the product's docs/);
     assert.match(r.stderr, /verify_call: GET https:\/\/api\.example\.com\/v1\/me/);
-    assert.equal(readConfig(join(cwd, "agent-ready.yml")).verify_call, undefined);
+    assert.equal(readConfig(join(cwd, "alg.yml")).verify_call, undefined);
   });
 });

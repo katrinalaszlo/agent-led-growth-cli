@@ -1,4 +1,4 @@
-// Terminal output for `agent-ready check`. Written to stderr; --json goes to stdout. Color only on a TTY,
+// Terminal output for `alg check`. Written to stderr; --json goes to stdout. Color only on a TTY,
 // never with NO_COLOR or --no-color. Every line reads the same with color stripped, and fits 80 columns.
 
 export function makeStyle(enabled) {
@@ -76,7 +76,7 @@ export function renderSummary(audit, paths, style, relative, savedTo) {
     }
   }
   // Nobody picked it this run, so say how to change it: it shapes the fix prompts.
-  const change = ["asked", "flag"].includes(audit.onboarding.chosen.source) ? (savedTo ? ` Saved to agent-ready.yml.` : "") : " Change it in agent-ready.yml or with --ask.";
+  const change = ["asked", "flag"].includes(audit.onboarding.chosen.source) ? (savedTo ? ` Saved to alg.yml.` : "") : " Change it in alg.yml or with --ask.";
   out.push(...wrap(`Onboarding: ${audit.onboarding.chosen.name} (${audit.onboarding.chosen.source}).${change}`, 76).map((line) => `  ${style.dim(line)}`));
   out.push(`  ${style.dim(`Files: ${relative(paths.folder)}/`)}`, `  ${style.dim(`       ${audit.findings.length ? "prompts/ for the fixes, " : ""}brief.md for security, legal, billing`)}`, "");
   return out;
@@ -84,7 +84,7 @@ export function renderSummary(audit, paths, style, relative, savedTo) {
 
 // What to do next, as the README's three steps: 1 check, 2 fix, 3 test. With fixes, step 2 names the first prompt
 // by its full path, so it can be copied; the test commands follow for later. They name the product, so test runs on
-// it whatever agent-ready.yml the folder holds.
+// it whatever alg.yml the folder holds.
 export function renderNext(audit, paths, style, relative) {
   const cmd = `npx agent-led-growth test ${audit.target.host}`;
   const test = [`        ${style.bold(`${cmd} --check`)}`, `        ${style.bold(cmd)}`, ""];
@@ -104,16 +104,16 @@ export function renderNext(audit, paths, style, relative) {
 export function renderStandardsStart(style) {
   return [
     `  ${style.bold("Benchmarks")}  optional: 5 third-party scores. Sends your URL to Cloudflare`,
-    `              and AgentGrade; --no-standards skips them.`,
+    `              and AgentGrade.`,
   ];
 }
 
 // The aeo-ready catalog: one line per benchmark, then the failed checks, one line per benchmark with the first names
 // that fit and a count of the rest; every name is in aeo-ready.json (file). Their scores are the benchmarks' own
 // (Cloudflare grades a level out of 5, the others out of 100); the seven steps above are not changed by any of it.
-// standards: the audit's `standards` field, or null when --no-standards skipped it.
+// standards: the audit's `standards` field, or null when the check ran without --standards.
 export function renderStandards(standards, style, file = null) {
-  if (!standards) return [`  ${style.bold("Benchmarks")}  skipped (--no-standards)`, ""];
+  if (!standards) return [`  ${style.bold("Benchmarks")}  add --standards for five third-party scores (1-3 min)`, ""];
   const indent = "              ";
   if (!standards.benchmarks.length) return [`${indent}${style.red("aeo-ready did not run.")} ${standards.error}`, ""];
   const out = [

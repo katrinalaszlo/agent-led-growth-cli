@@ -21,7 +21,7 @@ const doc = {
 async function workspace(t, runs) {
   const cwd = await mkdtemp(join(tmpdir(), "agent-ready-journey-"));
   t.after(() => rm(cwd, { recursive: true, force: true }));
-  const host = join(cwd, ".agent-ready", "example.com");
+  const host = join(cwd, ".alg", "example.com");
   await mkdir(join(host, "2026-10-01T10-00-00-check1"), { recursive: true });
   await writeFile(join(host, "2026-10-01T10-00-00-check1", "interface.json"), JSON.stringify(doc));
   for (const [folder, summary] of runs) {
