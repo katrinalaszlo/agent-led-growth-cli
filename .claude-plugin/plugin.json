@@ -1,6 +1,6 @@
 {
   "name": "agent-led-growth",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Score: evals for agents as customers. Runs a real agent through signup, key and first call on your product, before you ship. Track, the analytics half, measures which agents convert after.",
   "author": {
     "name": "Kat Laszlo",

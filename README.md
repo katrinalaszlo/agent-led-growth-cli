@@ -1,8 +1,20 @@
 # agent-led-growth
 
-Evals and analytics for agents as customers. Score before you ship, Track after.
+**Score** whether an AI agent can sign up for your product, get a key, and make a real API call. **Track** which agents actually do it on live traffic.
 
-This is Score, the evals half, and not the prompt-scorecard kind: it runs a real agent through signup, key and first call on your product. One command reads your pages and says where an agent would stop. A second one proves it with the agent. The analytics half, [Track](https://alg.katrinalaszlo.com), shows which agents actually do it once you ship.
+## What it does
+
+An agent tries to become your customer. The tool:
+
+1. **Checks** your public pages and says where an agent would stop.
+2. **Gives you a fix prompt** for Claude Code, Cursor, or Codex.
+3. **Tests** with a real agent to prove the fix works.
+
+## Quick start
+
+```bash
+npx agent-led-growth check yourproduct.com
+```
 
 ```
 $ npx agent-led-growth check resend.com
@@ -41,17 +53,7 @@ $ npx agent-led-growth check resend.com
 
 Six seconds. No account, no Docker, nothing sent to your product but GET requests. Needs Node 20.9 or later.
 
-## Three steps
-
-**1. Check.** Reads your public pages, marks the seven steps an agent goes through (Discover, Understand, Sign up, Access, Use, Pay, Manage), and writes one fix prompt per gap.
-
-```bash
-npx agent-led-growth check yourproduct.com
-```
-
-**2. Fix.** Paste the prompt it names into your coding agent (Claude Code, Cursor, Codex), deploy, check again. Each prompt says why, what to build, the security rules, and the acceptance tests to write. It never touches your code itself.
-
-**3. Test.** A real agent, your own Claude Code, signs up for your product and gets a key. A separate checker then calls your API with that key, with no key, and with a wrong key. The agent's word is never the verdict.
+Then fix and test:
 
 ```bash
 npx agent-led-growth test yourproduct.com --check   # free: shows the plan, runs nothing
@@ -71,9 +73,17 @@ npx agent-led-growth test yourproduct.com           # creates a real account; as
   11 turns · $0.37 · evidence in .alg/app.tansohq.com/2026-10-05T02-35-22-et9ch3/
 ```
 
-A test uses your Claude Code's model time, capped at $5. Runs in October 2026 cost $0.06 to $0.47 and took 27 seconds to 4 minutes.
+The agent is your own Claude Code. A separate checker then calls your API with the key it got, with no key, and with a wrong key. A test uses your Claude Code's model time, capped at $5. Runs in October 2026 cost $0.06 to $0.47 and took 27 seconds to 4 minutes.
 
-## After it passes, measure real agents
+## Why this is different
+
+Readiness scanners read your pages and grade what is documented. Agent-experience evals run an agent from install to working code. Neither tells you whether an agent can become a customer: sign up on its own, hold a key that works, and pay.
+
+This tool runs a real agent through the whole journey and verifies every claim from outside the agent. A successful HTTP response alone doesn't pass: the checker makes the call with the agent's key, with no key, and with a wrong key, and a call that answers without a key proves nothing. Two of the built-in tasks have the agent pay with real money, USDC over x402 and a card through Stripe Projects, and the evaluator reads the settlement on-chain or from the provider, never from the agent's transcript.
+
+The readiness scanners are still useful, so `--standards` runs five of them (agentic-seo, Cloudflare's isitagentready, Fern's afdocs, Vercel's agent-readability, AgentGrade, through [aeo-ready](https://www.npmjs.com/package/aeo-ready)) after the seven steps. They never change the verdict.
+
+## Then, measure real agents
 
 A passing test says an agent *can* become a customer. [Track](https://alg.katrinalaszlo.com) says which ones *do*: an Express middleware that records each agent's session, the errors that end it, and the outcomes that follow. Same seven steps, on real traffic instead of one test agent:
 
@@ -90,15 +100,21 @@ A passing test says an agent *can* become a customer. [Track](https://alg.katrin
 Add agent traffic to this API: read https://alg.katrinalaszlo.com/SKILL.md and follow it.
 ```
 
-## Why not a readiness score
+```
+Add agent traffic to this API: read https://alg.katrinalaszlo.com/SKILL.md and follow it.
+```
 
-Readiness scanners read your pages and grade what is documented. Agent-experience evals run an agent from install to working code. Neither tells you whether an agent can become a customer: sign up on its own, hold a key that works, and pay.
+## Full command reference
 
-This tool does the whole journey, with a real agent, and verifies every claim from outside the agent. Two of its built-in tasks have the agent pay with real money, USDC over x402 and a card through Stripe Projects, and the evaluator reads the settlement on-chain or from the provider, never from the agent's transcript.
+### The three steps
 
-The readiness scanners are still useful, so `--standards` runs five of them (agentic-seo, Cloudflare's isitagentready, Fern's afdocs, Vercel's agent-readability, AgentGrade, through [aeo-ready](https://www.npmjs.com/package/aeo-ready)) after the seven steps. They never change the verdict.
+**1. Check.** Reads your public pages, marks the seven steps an agent goes through (Discover, Understand, Sign up, Access, Use, Pay, Manage), and writes one fix prompt per gap.
 
-## With your coding agent
+**2. Fix.** Paste the prompt it names into your coding agent (Claude Code, Cursor, Codex), deploy, check again. Each prompt says why, what to build, the security rules, and the acceptance tests to write. It never touches your code itself.
+
+**3. Test.** A real agent, your own Claude Code, signs up for your product and gets a key. A separate checker then calls your API with that key, with no key, and with a wrong key. The agent's word is never the verdict.
+
+### With your coding agent
 
 Paste this into Claude Code, Codex, Cursor or any agent that runs shell commands:
 
@@ -115,7 +131,7 @@ claude plugin install agent-led-growth@agent-led-growth
 npx skills add katrinalaszlo/agent-led-growth-cli                   # Codex, Cursor, others
 ```
 
-## In CI
+### In CI
 
 ```bash
 npx agent-led-growth check $URL --fail-on high --json   # exit 1 on a high-severity gap
@@ -124,11 +140,11 @@ npx agent-led-growth test $URL --yes --json             # creates a real account
 
 Commit `alg.yml` so CI reuses your answers. `test` needs Claude Code installed and signed in, or `ANTHROPIC_API_KEY`.
 
-## Installed
+### Installed
 
 `npm i -g agent-led-growth`, then `alg check …` and `alg test …`.
 
-## Flags
+### Flags
 
 `check`
 
@@ -154,7 +170,7 @@ Commit `alg.yml` so CI reuses your answers. `test` needs Claude Code installed a
 
 Exit codes, both commands: `0` done or passed, `1` fixes found or test failed, `2` usage or setup, `3` the site did not answer or the run was inconclusive, `130` cancelled.
 
-## Cost, accounts and data
+### Cost, accounts and data
 
 | | `check` | `test --check` | `test` |
 | --- | --- | --- | --- |
@@ -166,12 +182,12 @@ Exit codes, both commands: `0` done or passed, `1` fixes found or test failed, `
 - **Your data.** No account, no telemetry, nothing phoned home. Check requests carry the user agent `agent-led-growth/<version>`. The agent runs with its own isolated settings: none of your MCP servers, hooks, plugins or CLAUDE.md files, and only the test identity's email address (a hook refuses any other).
 - **Secrets.** The agent's key, keys a product showed, claim codes, connection-string passwords and one-time codes and links are scrubbed from every file in the run folder after the check. `.alg/` stays on your machine; keep it out of version control.
 
-## Limits
+### Limits
 
 - **`check`** reads at most 36 pages per run (well-known paths such as `/llms.txt`, plus at most 14 links it follows), all on your product's own registrable domain. 10-second timeout and 2 MB per page. It does not run JavaScript, so a page that renders only in the browser reads as empty, and it sees nothing behind a login. A step found in page text can be wrong; only a test proves one.
 - **`test`** gives the agent 40 turns and $5. A run stops after 30 minutes, or 5 minutes with no output. The agent reaches only your product's domain and its usual subdomains (`www`, `api`, `docs`, `app`, `auth`, `console`, `dashboard`, `developers`), plus hosts in `verify_call`, `verify_exchange`, `verify_cli` and `verify_hosts`. It has Bash, WebFetch and file tools, not a browser, so a signup that works only in a browser (a JavaScript-only form, a CAPTCHA) stops it. One run is one attempt; results can differ between runs.
 
-## Onboarding
+### Onboarding
 
 Three questions pick the onboarding model the fix prompts build toward. `check` does not ask them: it takes what your docs describe, or the recommended model when they describe none, and prints which one it used. Answers are saved to `alg.yml`; edit it, pass the flags, or run `--ask`.
 
@@ -183,7 +199,7 @@ Three questions pick the onboarding model the fix prompts build toward. `check` 
 
 The headline and the seven steps are the same whatever the answers; the answers change the findings and the prompts.
 
-## alg.yml
+### alg.yml
 
 `check` writes it. `test` reads it, and infers a `verify_call` from your OpenAPI document when there is none: a GET that needs a key and no parameters, preferring `/me`, `/account`, `/user`, `/whoami`. A complete file:
 
@@ -212,7 +228,7 @@ The checker makes the call three times: with the agent's key (must return `verif
 
 `test yourproduct.com` uses `alg.yml` only when its `url` is that product; for another product it takes the task from that product's latest check and never writes the file. It works on a product running on your machine too (`url: localhost:3000`).
 
-## Paying with real money
+### Paying with real money
 
 Two built-in tasks have the agent pay from its own wallet over [x402](https://www.x402.org): `pay-x402-agentmail` (one inbox, $2.00; the payment is the authentication) and `pay-x402-telnyx` ($1 of credit). USDC on Base, from the wallet whose private key is in `AGENT_READY_WALLET_KEY`. Use a wallet made for this with a few dollars on it. The evaluator reads the settlement transaction on Base itself and passes only when USDC left that wallet for no more than `AGENT_READY_PAY_CAP_USD` (default 2.00) and the paid request answered 2xx.
 
@@ -224,7 +240,7 @@ AGENT_READY_WALLET_KEY=0x… npx agent-led-growth execute --task pay-x402-agentm
 
 `alg execute --help` lists every built-in task. They run against public products with your Claude Code, with no spending cap, and do not ask first.
 
-## For agents and scripts
+### For agents and scripts
 
 Everything works without a terminal. `--json` prints one document to stdout and nothing else; errors arrive as `agent-ready/error@1` with `{ code, message, hint }`.
 
