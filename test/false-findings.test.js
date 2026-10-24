@@ -233,14 +233,23 @@ test("www.agentid.com: no claim pattern from a URL slug or an OIDC owner claim",
   for (const p of doc.onboarding.patterns) for (const e of p.evidence) assert.doesNotMatch(e.quote, /<loc>|owner claim\b|sign-up-for/, `${p.id}: ${e.quote}`);
 });
 
-// AgentID's llms.txt sends the agent to AgentMail to get an AgentID. That page is not read, so Sign up and Access are
-// unknown, not a person's job and not proven.
-test("www.agentid.com: signup on agentmail.to is not read, so Sign up and Access need a test run", async () => {
+// AgentID's own llms-full.txt says the agent makes its account alone: "The agent creates and uses the account without a
+// human present." That is the evidence, and nothing else: not a blog link, a token claim or a question.
+test("www.agentid.com: Agent is the customer, from its own sentence about the agent creating the account", async () => {
   const data = recorded("onboarding", "www.agentid.com.json.gz");
   const { doc, steps } = await check(replayFrom(data.responses), "https://www.agentid.com/");
-  assert.equal(doc.onboarding.signupElsewhere.domain, "agentmail.to");
+  assert.deepEqual(doc.onboarding.patterns.map((p) => p.id), ["agent_is_customer"]);
+  assert.deepEqual(doc.onboarding.patterns[0].evidence.map((e) => e.quote), ["The agent creates and uses the account without a human present."]);
+  assert.equal(steps.signup.state, "agent_can");
+});
+
+// A product whose agent-facing pages send the agent to sign up on another company's site, which is not read: Sign up
+// and Access are unknown, not a person's job and not proven.
+test("signup on another company's site: Sign up and Access need a test run", async () => {
+  const { doc, steps } = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": "# Acme\n\n- [Get started](https://console.other.example/sign-up): Create an Other inbox to get an Acme identity\n" }));
+  assert.equal(doc.onboarding.signupElsewhere.domain, "other.example");
   assert.equal(steps.signup.state, "not_checked");
-  assert.match(steps.signup.reason, /agentmail\.to/);
+  assert.match(steps.signup.reason, /other\.example, another company's site/);
   assert.equal(steps.access.state, "not_checked");
 });
 
