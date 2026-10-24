@@ -155,11 +155,15 @@ export async function connect({ endpoint, envFile, vercel, cwd, interactive, fet
   say(`  ${bold("alg connect")} · ${new URL(endpoint).host}`);
   const start = await startDeviceLogin({ endpoint, fetchImpl });
   say("");
-  say(`  Your code: ${bold(start.user_code)}`);
   const opened = openBrowser(start.verification_url, run);
   if (opened.error || opened.status) say(`  Open ${start.verification_url} in your browser.`);
   else say(`  Opened ${start.verification_url} in your browser.`);
-  say(`  Check the code there matches, then approve. ${dim("Waiting…")}`);
+  say("");
+  say("  Type this code on that page:");
+  say("");
+  say(`      ${bold(start.user_code)}`);
+  say("");
+  say(`  Check where the page says the request came from, then approve. ${dim("Waiting…")}`);
 
   const polled = await pollForKey({ endpoint, start, fetchImpl, sleep, now });
   if (!polled.ok) {

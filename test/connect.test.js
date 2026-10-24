@@ -31,7 +31,7 @@ async function fakeTrack(pollAnswers, { startStatus = 201, interval = 1, expires
         res.writeHead(status, { "content-type": "application/json" });
         res.end(JSON.stringify(json));
       };
-      if (req.url === "/v1/connect/start") return send(startStatus, { device_code: "dev_1", user_code: "WDJB-MJHT", verification_url: `http://127.0.0.1:${server.address().port}/connect?code=WDJB-MJHT`, expires_in: expiresIn, interval });
+      if (req.url === "/v1/connect/start") return send(startStatus, { device_code: "dev_1", user_code: "WDJB-MJHT", verification_url: `http://127.0.0.1:${server.address().port}/connect`, expires_in: expiresIn, interval });
       if (req.url === "/v1/connect/poll") {
         const [status, json] = answers.shift() ?? [202, { error: "authorization_pending" }];
         return send(status, json);
@@ -89,11 +89,12 @@ describe("alg connect: device login", () => {
     assert.deepEqual(track.requests[1].body, { device_code: "dev_1" });
     assert.deepEqual(sleeps, [1000, 1000, 1000]);
     assert.deepEqual(fake.calls[0], { cmd: process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open", args: fake.calls[0].args, input: undefined });
-    assert.ok(fake.calls[0].args.at(-1).endsWith("/connect?code=WDJB-MJHT"));
+    assert.ok(fake.calls[0].args.at(-1).endsWith("/connect"));
     const env = readFileSync(join(cwd, ".env"), "utf8");
     assert.equal(env, `AGENT_TRAFFIC_KEY=${KEY}\nAGENT_TRAFFIC_PROJECT_ID=6f1c2b8e-0000-4000-8000-000000000001\n`);
     assert.equal(statSync(join(cwd, ".env")).mode & 0o777, 0o600);
-    assert.match(output, /Your code: WDJB-MJHT/);
+    assert.match(output, /Type this code on that page:\n\n      WDJB-MJHT\n/);
+    assert.match(output, /Check where the page says the request came from, then approve\./);
     assert.match(output, /Connected to Acme API\./);
     assert.match(output, /Saved AGENT_TRAFFIC_KEY, AGENT_TRAFFIC_PROJECT_ID to \.env \(new file, readable only by you\)\./);
     assert.match(output, /Next: restart your server, then open https:\/\/alg\.katrinalaszlo\.com\/install to watch the first event\./);
@@ -108,7 +109,7 @@ describe("alg connect: device login", () => {
     const { code, output } = await runConnect({ endpoint: track.endpoint, cwd, run });
     await track.close();
     assert.equal(code, 0);
-    assert.match(output, /Open http:\/\/127\.0\.0\.1:\d+\/connect\?code=WDJB-MJHT in your browser\./);
+    assert.match(output, /Open http:\/\/127\.0\.0\.1:\d+\/connect in your browser\./);
   });
 
   test("a server other than the default is written as AGENT_TRAFFIC_ENDPOINT, so the middleware sends there", async () => {
@@ -334,7 +335,7 @@ describe("alg connect: the command", () => {
     assert.equal(result.stdout, "");
     assert.equal(result.stderr.includes(KEY), false);
     assert.match(result.stderr, /alg connect · 127\.0\.0\.1/);
-    assert.match(result.stderr, /Opened http:\/\/127\.0\.0\.1:\d+\/connect\?code=WDJB-MJHT in your browser\./);
+    assert.match(result.stderr, /Opened http:\/\/127\.0\.0\.1:\d+\/connect in your browser\./);
     assert.match(readFileSync(join(cwd, ".env"), "utf8"), new RegExp(`^AGENT_TRAFFIC_KEY=${KEY}$`, "m"));
   });
 });

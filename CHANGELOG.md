@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2 (2026-10-24)
+
+- `alg connect`: Track's /connect page no longer fills in the code, so the CLI now asks you to type the code it prints on that page, check where the page says the request came from, then approve. The code is printed on its own line. The CLI opens the `verification_url` Track returns as it is and does not expect the code in it.
+- Dependency: `undici` (through `@vercel/sandbox`) moves to 7.30.1, closing three high advisories (GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472, GHSA-xjj6-f33q-929c). `npm audit` reports 0 vulnerabilities.
+
 ## 0.8.1 (2026-10-23)
 
 - README only: the source link points at the public repository, agent-led-growth-cli, and the install prompt appears once, as "Add Track to this API".
