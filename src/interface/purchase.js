@@ -1,5 +1,6 @@
 import { htmlToText, registrableDomain, sameSite } from "./sources.js";
-import { AGENT_FACING, DOMAIN_ACTORS, PROTOCOL_DESCRIPTION, PROTOCOL_SITES, SELLER, paysElsewhere, quoteAround, sentenceAround } from "./onboarding.js";
+import { AGENT_FACING, DOMAIN_ACTORS, PROTOCOL_DESCRIPTION, PROTOCOL_SITES, SELLER, paysElsewhere, sentenceAround } from "./onboarding.js";
+import { quoteAt } from "./quote.js";
 
 // Whether the product's own pages document a way for an agent to buy from it through an API, and whether a person
 // approves first. Rules over page text, like the onboarding signals: each rule is a named pattern, every hit carries
@@ -239,7 +240,7 @@ export function detectAgentPurchase(doc, bodies) {
     const text = body.html ? htmlToText(body.text) : body.text;
     // The product publishes its UCP business profile: the product saying agents can check out with it over UCP.
     if (obs.role === "ucp_profile") {
-      if (isUcpProfile(text)) hits.push({ rule: "checkout_protocol_own_api", obs: obs.id, quote: quoteAround(text, 0), approval: false, call: null, score: 2, protocol: "UCP", agentFacing: true });
+      if (isUcpProfile(text)) hits.push({ rule: "checkout_protocol_own_api", obs: obs.id, quote: new URL(obs.url).pathname, label: "UCP business profile", approval: false, call: null, score: 2, protocol: "UCP", agentFacing: true });
       continue;
     }
     const sellerPage = SELLER_PAGE.test(new URL(obs.url).pathname);
@@ -249,7 +250,10 @@ export function detectAgentPurchase(doc, bodies) {
       const hit = find(text, ownDomain);
       if (!hit) continue;
       const near = text.slice(Math.max(0, hit.index - APPROVAL_WINDOW), hit.index + APPROVAL_WINDOW);
-      hits.push({ rule, obs: obs.id, quote: quoteAround(text, hit.index), approval: Boolean(hit.approved) || APPROVAL.test(hit.sentence) || APPROVAL.test(near), call: hit.call, score: hit.score, protocol: hit.protocol || protocolIn(hit.sentence, text), agentFacing: AGENT_FACING.has(obs.role) });
+      // The sentence or labelled element holding the hit (src/interface/quote.js); null when the words run across two
+      // elements of the page, and then the hit has no quote.
+      const q = quoteAt(body, text, hit.index, hit.index + 1, obs.role);
+      hits.push({ rule, obs: obs.id, quote: q?.quote || null, ...(q?.label ? { label: q.label } : {}), approval: Boolean(hit.approved) || APPROVAL.test(hit.sentence) || APPROVAL.test(near), call: hit.call, score: hit.score, protocol: hit.protocol || protocolIn(hit.sentence, text), agentFacing: AGENT_FACING.has(obs.role) });
     }
   }
   if (!hits.length) return null;
@@ -265,6 +269,6 @@ export function detectAgentPurchase(doc, bodies) {
     approval: hits.some((h) => h.approval) ? "once" : "none_documented",
     call: ruled.find((h) => h.call)?.call || null,
     protocol: ruled.find((h) => h.protocol)?.protocol || null,
-    evidence: ordered.filter((h) => h.rule === rule).concat(ordered.filter((h) => h.rule !== rule)).slice(0, EVIDENCE_MAX * 2).map(({ obs, quote }) => ({ obs, quote })),
+    evidence: ordered.filter((h) => h.rule === rule).concat(ordered.filter((h) => h.rule !== rule)).slice(0, EVIDENCE_MAX * 2).map(({ obs, quote, label }) => ({ obs, quote, ...(label ? { label } : {}) })),
   };
 }

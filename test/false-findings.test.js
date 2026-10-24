@@ -116,7 +116,7 @@ test("an email-gated signup still needs an inbox, with the sentence that says so
   assert.equal(steps.signup.quotes[0].url, "https://acme.dev/llms.txt");
   assert.ok(doc.onboarding.patterns[0].needs.includes("inbox"));
   const rows = renderSteps(buildAudit({ doc, funnel: (await inspect({ url: "https://acme.dev/", version: "test", runId: "r", fetchSource: pagesFrom(gated) })).funnel, answers: answers({}), task: "t", runId: "r", version: "test" }), plain).join("\n");
-  assert.match(rows, /"[^"]*verification code[^"]*" \(\/llms\.txt\)/, rows);
+  assert.match(rows, /"[^"]*verification code[^"]*"\s+\(\/llms\.txt\)/, rows);
   for (const line of rows.split("\n")) assert.ok([...line].length <= 80, line);
 });
 
@@ -209,4 +209,97 @@ test("Manage keeps needing a test when there is more than one plan or a paid one
   const paid = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/pricing.json": JSON.stringify({ plans: [{ id: "pro", price: { amount: 20, currency: "USD", period: "month" } }] }) }));
   assert.equal(paid.steps.pay.state, "needs_person");
   assert.equal(paid.steps.manage.state, "not_checked");
+});
+
+// The inbox need counts only when the sentence's subject is the product's own signup. AgentID's llms-full.txt tells the
+// general problem ("An agent signs up with its owner's email, reads the verification code out of the owner's inbox")
+// and read as AgentID's signup needing an inbox; its llms.txt names `npx @agentmail/agentid-cli init`, a CLI app
+// developers run to register an app, which read as a CLI signup.
+test("www.agentid.com: no inbox and no CLI from text about the general problem or about integrating AgentID", async () => {
+  const data = recorded("onboarding", "www.agentid.com.json.gz");
+  const { doc, steps } = await check(replayFrom(data.responses), "https://www.agentid.com/");
+  for (const p of doc.onboarding.patterns) assert.deepEqual(p.needs, [], `${p.id} needs ${p.needs}`);
+  assert.doesNotMatch(steps.signup.reason, /inbox|shell/);
+  assert.equal(steps.signup.quotes, undefined);
+});
+
+// AgentID read as "Try first, claim later" from a blog slug (/blog/can-an-ai-agent-sign-up-for-a-saas, in a sitemap and
+// in a link) and from "owner claim", which on AgentID is an OpenID Connect field in a token, not a person claiming.
+test("www.agentid.com: no claim pattern from a URL slug or an OIDC owner claim", async () => {
+  const data = recorded("onboarding", "www.agentid.com.json.gz");
+  const { doc } = await check(replayFrom(data.responses), "https://www.agentid.com/");
+  const ids = doc.onboarding.patterns.map((p) => p.id);
+  assert.ok(!ids.includes("try_then_claim") && !ids.includes("limited_until_claimed"), ids.join(", "));
+  for (const p of doc.onboarding.patterns) for (const e of p.evidence) assert.doesNotMatch(e.quote, /<loc>|owner claim\b|sign-up-for/, `${p.id}: ${e.quote}`);
+});
+
+// AgentID's llms.txt sends the agent to AgentMail to get an AgentID. That page is not read, so Sign up and Access are
+// unknown, not a person's job and not proven.
+test("www.agentid.com: signup on agentmail.to is not read, so Sign up and Access need a test run", async () => {
+  const data = recorded("onboarding", "www.agentid.com.json.gz");
+  const { doc, steps } = await check(replayFrom(data.responses), "https://www.agentid.com/");
+  assert.equal(doc.onboarding.signupElsewhere.domain, "agentmail.to");
+  assert.equal(steps.signup.state, "not_checked");
+  assert.match(steps.signup.reason, /agentmail\.to/);
+  assert.equal(steps.access.state, "not_checked");
+});
+
+test("claim: \"the owner claims the workspace\" counts; an OIDC \"owner claim\" in a token does not", async () => {
+  const signup = "POST https://acme.dev/v1/agents/signup creates an account and returns a key.\n\n";
+  const real = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": `# Acme\n\n${signup}Later the owner claims the workspace from a link.\n` }));
+  assert.ok(real.doc.onboarding.patterns.some((p) => p.id === "try_then_claim"));
+  const oidc = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": `# Acme\n\n${signup}Your app never receives a sign-in with the requested owner claim quietly missing.\n` }));
+  assert.ok(!oidc.doc.onboarding.patterns.some((p) => p.id === "try_then_claim"));
+});
+
+test("signup: an agent-sign-up URL slug or a question is not a way in; an FAQ answer is", async () => {
+  const slug = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": "# Acme\n\nRead [the post](/blog/can-an-ai-agent-sign-up-for-a-saas) on agents.\n" }));
+  assert.ok(!slug.doc.onboarding.patterns.some((p) => ["try_then_claim", "agent_is_customer", "limited_until_claimed"].includes(p.id)));
+  const question = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": "# Acme\n\n## How can you tell an agent signup from a human one?\n\nLook at the user agent.\n" }));
+  assert.ok(!question.doc.onboarding.patterns.some((p) => p.id === "agent_is_customer"));
+  const faq = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": "# Acme\n\n## Can an agent sign up?\n\nYes. Agents can sign up in one API call.\n" }));
+  assert.ok(faq.doc.onboarding.patterns.some((p) => p.id === "agent_is_customer"));
+});
+
+// Products whose signup really sends a code or link keep the need, each with its own sentence. The ones 0.8.3 cleared
+// stay cleared.
+const INBOX = {
+  "telnyx.com": "Step 4 of the signup flow requires retrieving a session token from a magic link sent to an email address.",
+  "inkbox.ai": "The human receives a verification email with a 6-digit code.",
+  "agentmail.to": "An OTP will be sent to that email.",
+  "aisend.app": "Click the link in the verification email \u2014 sending is blocked until you do",
+  "www.cosmicjs.com": "The project starts in **restricted mode** (\"unclaimed\") with conservative limits, an OTP is emailed to the human, and the human paste the code back to the agent to claim full free-tier access.",
+  "agentline.cloud": "**Headless fallback** (no browser tool and no human): `POST /v1/auth/otp` → `POST /v1/auth/verify` → write `api_key` from the raw HTTP body.",
+};
+for (const [host, sentence] of Object.entries(INBOX)) {
+  test(`${host}: still needs an inbox, quoting its own signup`, async () => {
+    const data = recorded("onboarding", `${host}.json.gz`);
+    const { steps } = await check(replayFrom(data.responses), `https://${host}/`);
+    assert.match(steps.signup.reason, /Needs an inbox the agent can read\./);
+    const q = steps.signup.quotes.find((x) => x.for === "inbox");
+    assert.equal(q.quote, sentence);
+  });
+}
+for (const host of ["firecrawl.dev", "mem0.ai", "moltbook.com", "neon.com", "paywithlocus.com", "www.agentid.com", "alg.katrinalaszlo.com", "resend.com"]) {
+  test(`${host}: no inbox need`, async () => {
+    const data = recorded("onboarding", `${host}.json.gz`);
+    const { doc } = await check(replayFrom(data.responses), `https://${host}/`);
+    for (const p of doc.onboarding.patterns) assert.ok(!p.needs.includes("inbox"), `${p.id}: ${JSON.stringify(p.needsEvidence?.inbox)}`);
+  });
+}
+
+test("inbox: a generic \"an agent signs up\" narrative is not the product's signup; \"Sign up for Acme\" and \"we email\" are", async () => {
+  const signup = "POST https://acme.dev/v1/agents/signup creates an account and returns a key.\n\n";
+  const story = await check(pagesFrom({
+    "https://acme.dev/": home,
+    "https://acme.dev/llms.txt": `# Acme\n\n${signup}## Why Acme\n\nAn agent signs up with its owner's email, reads the verification code out of the owner's inbox, and sometimes types in the owner's card.\n`,
+  }));
+  assert.doesNotMatch(story.steps.signup.reason, /inbox/);
+  const named = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": `# Acme\n\n${signup}To sign up for Acme as a person, enter the verification code from your inbox.\n` }));
+  assert.match(named.steps.signup.reason, /inbox/);
+  const we = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": `# Acme\n\n${signup}After that call we email the owner a verification code.\n` }));
+  assert.match(we.steps.signup.reason, /inbox/);
+  const section = await check(pagesFrom({ "https://acme.dev/": home, "https://acme.dev/llms.txt": `# Acme\n\n${signup}## Quick start\n\n1. Call the signup endpoint.\n2. Click the link in the verification email.\n` }));
+  assert.match(section.steps.signup.reason, /inbox/);
+  assert.deepEqual({ quote: section.steps.signup.quotes[0].quote, label: section.steps.signup.quotes[0].label }, { quote: "Click the link in the verification email.", label: undefined });
 });

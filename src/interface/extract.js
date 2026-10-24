@@ -1,5 +1,6 @@
 import { parseRobots, AI_BOTS } from "../probe/index.js";
 import { htmlToText } from "./sources.js";
+import { quoteAt } from "./quote.js";
 
 // Deterministic extraction. Every fact carries the observation it came from and a quote from that page.
 // A fact that cannot be extracted is null; callers turn nulls into unknowns. No inference happens here.
@@ -176,6 +177,18 @@ const AMBIGUITY_RE = /contact (?:us|sales)|custom pricing|talk to sales|get a qu
 // limit: Track's "4 KB per request", "What it sends, per request".
 const USAGE_RE = /usage[- ]based|pay[- ]as[- ]you[- ]go|\b(?:priced|charged|billed|paid|pay|costs?|fee|price)\s+(?:\w+\s+)?per (?:request|call|token|seat|user)\b|metered billing/gi;
 
+function paidPriceQuote(page, text) {
+  let tried = 0;
+  for (const m of text.matchAll(PRICE_RE)) {
+    // "$75M Series B" is a funding round, not a plan.
+    if (!/[1-9]/.test(m[0]) || /^[MB]\b/i.test(text.slice(m.index + m[0].length))) continue;
+    const q = quoteAt(page, text, m.index, m.index + m[0].length, page.obs.role);
+    if (q) return q;
+    if (++tried >= 200) return null;
+  }
+  return null;
+}
+
 export function extractPricingPages(observations, bodies) {
   const out = [];
   for (const page of pages(observations, bodies, ["pricing", "homepage"])) {
@@ -184,7 +197,10 @@ export function extractPricingPages(observations, bodies) {
     const ambiguities = [...new Set((text.match(AMBIGUITY_RE) || []).map((s) => s.toLowerCase()))];
     const usage = [...new Set((text.match(USAGE_RE) || []).map((s) => s.toLowerCase()))];
     if (page.obs.role === "homepage" && !prices.length) continue;
-    out.push(fact({ prices, ambiguities, usageTerms: usage }, page.obs.id, quoteAround(text, /(\$|€|£)\s?\d/) || quoteAround(text, AMBIGUITY_RE) || text.slice(0, 140)));
+    // A paid price is what Pay quotes when it says paid plans are published, so it gets a clean quote: the sentence or
+    // labelled element holding the first price above zero that has one (src/interface/quote.js), or null.
+    const paid = paidPriceQuote(page, text);
+    out.push(fact({ prices, ambiguities, usageTerms: usage, paidQuote: paid ? { obs: page.obs.id, ...paid } : null }, page.obs.id, quoteAround(text, /(\$|€|£)\s?\d/) || quoteAround(text, AMBIGUITY_RE) || text.slice(0, 140)));
   }
   return out;
 }

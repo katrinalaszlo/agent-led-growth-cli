@@ -1,5 +1,6 @@
 import { htmlToText, registrableDomain, sameSite } from "./sources.js";
 import { freePlansOnly } from "./evaluate.js";
+import { blockContext, quoteAt } from "./quote.js";
 
 // Which ways can an agent start using this product? Read from public docs only, so every pattern is a claim the docs
 // make, with the quotes that make it; none is a result. A product can support several. Rules, not a model: each signal
@@ -14,8 +15,9 @@ const SIGNALS = {
   // Agent-infra products use the same words for signing up somewhere else: AgentLine's "so your agent can sign up and
   // verify", AgentID's "apps where agents can sign up and sign in with AgentID". "No agent can sign up" is the opposite.
   bootstrap: /\bagent[- ]?sign[- ]?up\b|(?<!\b(?:no|not|never|where)\s+(?:\w+\s+){0,2})\bagents? (?:can )?(?:sign(?:s)? (?:itself |themselves )?up|creates? (?:its|their) own (?:accounts?|API keys?))(?:\*\*)?(?: here| for an account| in one (?:API )?(?:call|request)| and get (?:an? |its |their )?(?:own )?(?:API )?key| \(beta\)| instantly| immediately| automatically| programmatically)*(?=(?:\*\*)?\s*(?:[.;!)\n]|,\s*(?:and )?get\b|[—–]|$))|\/agents?\/sign-?up\b|\bsign(?:s|ing)? (?:itself|themselves) up\b|\bregisters? itself\b|\bno (?:human|account|signup|sign-up)(?: or API key)? (?:is )?(?:needed|required)\b|\bwithout (?:a |an )?(?:human|account)\b|\banonymous(?:ly)? (?:create|creates|provision|access|account|project|identit)|\btemporary (?:account|project|deployment)s?\b|--temporary\b|\binit --agent\b|\bagent_mode\b|\bbot[_ ]signup\b|\bidentity_types_supported\b/i,
-  // A person can take ownership afterwards.
-  claim: /\bclaim(?:s|ed|ing)? (?:it|this|the|your|their) (?:account|project|workspace|deployment|bucket|inbox|resources?)\b|\bclaim (?:url|code|link|token|flow|page|email)\b|\bclaim_url\b|\bclaimUrl\b|\/claim\b|\bunclaimed\b|\bclaimable\b|\b(?:human|owner|person) (?:can |may |will )?(?:later )?claim\b|\battach (?:a |the )?(?:human )?owner\b|\badopt (?:the |this )?workspace\b/i,
+  // A person can take ownership afterwards. "The owner claims the workspace", with an object: an OpenID Connect "owner
+  // claim" is a field in a token (AgentID's llms-full.txt "the requested owner claim quietly missing"), not a person.
+  claim: /\bclaim(?:s|ed|ing)? (?:it|this|the|your|their) (?:account|project|workspace|deployment|bucket|inbox|resources?)\b|\bclaim (?:url|code|link|token|flow|page|email)\b|\bclaim_url\b|\bclaimUrl\b|\/claim\b|\bunclaimed\b|\bclaimable\b|\b(?:human|owner|person) (?:can |may |will |must |then )?(?:later )?claims? (?:it|this|the|your|their|its)\b|\battach (?:a |the )?(?:human )?owner\b|\badopt (?:the |this )?workspace\b/i,
   // What the agent made goes away unless someone keeps it.
   // Tied to the account or resource: "quotes expire after 5 minutes" is not this. The sentence must name an account,
   // project, workspace, key or token and not a stored thing (STORED_THING below): Supermemory's "temporary facts drop
@@ -44,7 +46,7 @@ const SIGNALS = {
   // The documented way in is a command-line tool rather than an HTTP call.
   // At most four words between the tool and the flag or subcommand, so it is one command line: Track's docs say
   // "npx agent-led-growth check <url> runs a real agent through signup", which is prose after a command, not a signup.
-  cliBootstrap: /\b(?:npx|wrangler|mem0|stripe|npm i(?:nstall)?|pip install|brew install)\b(?:[ \t]+[^\s`]+){0,4}?[ \t]+(?:--temporary|--agent|init\b|sign-?up\b|projects init)/i,
+  cliBootstrap: /\b(?:npx|wrangler|mem0|stripe|npm i(?:nstall)?|pip install|brew install)\b(?:[ \t]+[^\s`]+){0,4}?[ \t]+(?:--temporary|--agent|sign-?up\b|projects init)/i,
   // The product's CLI takes a token without a browser, so an agent can run it unattended once a person has made the
   // token: Vercel's "Set the VERCEL_TOKEN environment variable" or "Pass the --token option", GitHub's "--with-token".
   // An environment variable counts only where the text calls it one: code samples are full of other _API_KEY names.
@@ -195,9 +197,19 @@ function findAgentIdSignIn(doc, bodies) {
       ...(agentFacing ? [...text.matchAll(AGENTID_DECLARED)] : []),
       ...[...text.matchAll(AGENTID_ROUTE)],
     ].sort((x, y) => x.index - y.index);
-    const match = matches.find((m) => !AGENTID_ELSEWHERE.test(text.slice(Math.max(0, m.index - 60), m.index + m[0].length + 60)) && !announcedByOther(text.slice(Math.max(0, m.index - 60), m.index + m[0].length), doc) && !AGENTID_VENDOR.test(sentenceAround(text, m.index, m.index + m[0].length)));
+    const kept = matches.filter((m) => !AGENTID_ELSEWHERE.test(text.slice(Math.max(0, m.index - 60), m.index + m[0].length + 60)) && !announcedByOther(text.slice(Math.max(0, m.index - 60), m.index + m[0].length), doc) && !AGENTID_VENDOR.test(sentenceAround(text, m.index, m.index + m[0].length)));
+    // The first kept match with a clean quote: one sentence or labelled element holding the words (src/interface/quote.js).
+    let match = null;
+    let q = null;
+    for (const m of kept) {
+      q = quoteAt(body, text, m.index, m.index + m[0].length, obs.role);
+      if (q) {
+        match = m;
+        break;
+      }
+    }
     if (!match) continue;
-    out.push({ obs: obs.id, quote: quoteAround(text, match.index), agentFacing });
+    out.push({ obs: obs.id, quote: q.quote, ...(q.label ? { label: q.label } : {}), agentFacing });
     if (AGENTID_OWNER.test(text.slice(Math.max(0, match.index - OWNER_WINDOW), match.index + OWNER_WINDOW))) ownerDocumented = true;
   }
   return { entries: out, ownerDocumented };
@@ -284,47 +296,112 @@ const SIGNUP_ELSEWHERE = /\bsign(?:s|ing)? up for (?:services|other|any|third-pa
 // An optional step is not a requirement: Locus's "the human is needed only for an optional AgentMail OTP".
 const OPTIONAL = /\boptional(?:ly)?\b/i;
 
+// An inbox step counts only when its subject is the product's own signup. AgentID's llms-full.txt tells the general
+// problem, "An agent signs up with its owner's email, reads the verification code out of the owner's inbox", and that
+// read as AgentID's own signup needing an inbox. A sentence counts when it says so itself (ownSignup below), or when it
+// sits on the product's own agent-signup or auth page, or in a signup section of a page (under a "Sign up", "Agent
+// Signup", "Registration" or "Quick start" heading, or right after a step that is the product's own signup call).
+// A third-person narrative ("an agent signs up", "AI agents can sign up for a SaaS product") counts only on the
+// product's own signup page.
+// The sentence calls one of the product's signup, sign-in or verify endpoints: AgentLine's "`POST /v1/auth/otp` →
+// `POST /v1/auth/verify`", Cosmic's "(POST /v3/agents/sign-up)", AgentMail's "curl -X POST .../v0/agent/sign-up".
+const SIGNUP_CALL = /\b(?:POST|GET|PUT)\b[^\n]{0,24}?\/[\w.\/{}:-]*?(?:sign[-_]?up|sign[-_]?in|register|registration|verif\w*|otp|auth|login|magic[-_]?link|onboard)\b/i;
+// "We send", "we'll email", "our signup": the product speaking about its own flow.
+const FIRST_PERSON = /\b(?:we|we'll|we will)\s+(?:then\s+)?(?:send|email|text|mail)\b|\bour (?:sign[- ]?up|signup|registration|onboarding|verification|sign[- ]?in|login)\b|\b(?:create an account|sign up|register) here\b/i;
+const SIGNUP_HEADING = /^\W*(?:\w+ )?(?:sign[- ]?up|signup|sign[- ]?in|register|registration|create (?:an |your )?account|get(?:ting)? started|quick ?start|onboarding)\b(?![^?]*\?)/i;
+const GENERIC_NARRATIVE = /\b(?:an?|every|each|any|most|many|some)\s+(?:AI\s+)?(?:agents?|users?|people|persons?|humans?|developers?|bots?)\b(?:\s+\w+){0,3}?\s+(?:sign(?:s|ed|ing)?|can sign|could sign) up\b/i;
+const OWN_SIGNUP_PAGES = new Set(["onboarding", "auth"]);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// The product's names: its host's labels (agentmail, cosmicjs and cosmic) and the first part of its page title.
+function productNames(doc) {
+  const labels = doc.target.host.toLowerCase().split(".").slice(0, -1).filter((l) => l !== "www" && l.length > 2);
+  const variants = labels.flatMap((l) => [l, l.replace(/(?:js|hq|app|ai|io|dev|labs)$/, "")]).filter((l) => l.length > 2);
+  const title = String(doc.product?.name?.value || "").split(/\s+[|\u2014\u2013:-]\s+|\s*[|:]\s*/)[0].trim();
+  return [...new Set([...variants, ...(title && title.length <= 40 ? [title.toLowerCase()] : [])])];
+}
+function ownSignupSentence(sentence, names) {
+  if (SIGNUP_CALL.test(sentence) || FIRST_PERSON.test(sentence)) return true;
+  if (!names.length) return false;
+  const name = `(?:${names.map(escapeRe).join("|")})`;
+  return new RegExp(`\\b(?:sign(?:s|ed|ing)?[- ]?(?:up|in)|log(?:s|ged|ging)?[- ]?in|register(?:s|ed|ing)?|creat(?:e|es|ed|ing) (?:an? |your )?account)\\s+(?:for|to|with|on|at|into)\\s+(?:an? )?${name}\\b|\\b${name}\\s+(?:sends?|emails?|will (?:send|email)|texts?)\\b|\\b(?:your|an?|the) ${name} account\\b|\\b${name}[\\w.]*\\/(?:sign-?up|register|signin|login)\\b`, "i").test(sentence);
+}
+function ownSignup(sentence, match, page) {
+  if (ownSignupSentence(sentence, page.names)) return true;
+  // On the product's own signup page the sentence still has to be about signing up: Moltbook's "Verification code
+  // expired." is a line of an error list, Locus's "Never ask the human to reveal their ... email verification
+  // code" is advice. The words are looked for outside the match.
+  if (OWN_SIGNUP_PAGES.has(page.role) && SIGNUP_CONTEXT.test(withoutMatch(sentence, match))) return true;
+  if (GENERIC_NARRATIVE.test(sentence)) return false;
+  const ctx = page.context();
+  if (!ctx) return false;
+  const heading = ctx.heading.replace(/[#*_`]/g, " ").trim();
+  return SIGNUP_HEADING.test(heading) || ownSignupSentence(heading, page.names) || ownSignupSentence(ctx.previous, page.names);
+}
+
+// A question says nothing about this product: AgentID's llms-full.txt "How can you tell an agent signup from a human
+// one?" heads an explainer, and its comparison table's row "Can the agent sign up for a new service on its own" has no
+// question mark. An FAQ's answer, where it says yes, is its own sentence and is tried next.
+const QUESTION = /\?\s*(?:\*\*)?\s*$|^\W*(?:can|could|does|do|is|are|will|should|how|why|what|when|where)\b/i;
+
+// The match names a page rather than saying anything: AgentID's "[can an AI agent sign up for a
+// SaaS](/blog/can-an-ai-agent-sign-up-for-a-saas)" is a link to a blog post, in its text and in its slug. A path like
+// /agents/signup starts with a slash and still counts.
+function inSlug(sentence, match) {
+  if (match.startsWith("/")) return false;
+  const m = escapeRe(match);
+  if (new RegExp(`\\[[^\\]]*${m}[^\\]]*\\]\\(`, "i").test(sentence)) return true;
+  const re = new RegExp(`[\\w/]-${m}|${m}-[a-z]`, "i");
+  return re.test(sentence) && !sentence.includes(` ${match} `) && !sentence.startsWith(`${match} `);
+}
+
 // Whether a sentence holding a match is about something else; such a match is skipped and the next one tried.
+// page: { role, names, context() } for the rules that read where the sentence is (the inbox rule).
 const SKIP = {
-  bootstrap: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || SIGNUP_OFF.test(sentence) || PERSON_WITHOUT_ACCOUNT.test(sentence) || PAYMENT_WAY_IN.test(sentence) || CLIENT_REGISTRATION.test(sentence) || BROKERED.test(sentence) || (/^temporary\b/i.test(match) && STORED_THING.test(sentence)),
+  bootstrap: (sentence, ownDomain, match) => inSlug(sentence, match) || QUESTION.test(sentence) || DOMAIN_ACTORS.test(sentence) || SIGNUP_OFF.test(sentence) || PERSON_WITHOUT_ACCOUNT.test(sentence) || PAYMENT_WAY_IN.test(sentence) || CLIENT_REGISTRATION.test(sentence) || BROKERED.test(sentence) || (/^temporary\b/i.test(match) && STORED_THING.test(sentence)),
   expiry: (sentence) => !ACCOUNT_THING.test(sentence) || STORED_THING.test(sentence) || NO_EXPIRY.test(sentence),
   restricted: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || negatedBefore(sentence, match),
-  emailStep: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || INDEX_LINE.test(sentence) || SIGNUP_ELSEWHERE.test(sentence) || OPTIONAL.test(sentence) || NO_INBOX.test(sentence) || negatedBefore(sentence, match) || !SIGNUP_CONTEXT.test(withoutMatch(sentence, match)),
+  emailStep: (sentence, ownDomain, match, page, label) => label === "Code" || DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || INDEX_LINE.test(sentence) || SIGNUP_ELSEWHERE.test(sentence) || OPTIONAL.test(sentence) || NO_INBOX.test(sentence) || negatedBefore(sentence, match) || !ownSignup(sentence, match, page),
   humanFirst: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || negatedBefore(sentence, match),
   httpBootstrap: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || OAUTH_REGISTRATION.test(match),
   payPerRequest: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || SELLER.test(sentence) || PROTOCOL_DESCRIPTION.test(sentence) || paysElsewhere(sentence, ownDomain) || negatedBefore(sentence, match),
 };
-const GLOBAL = Object.fromEntries(Object.keys(SKIP).map((name) => [name, new RegExp(SIGNALS[name].source, `${SIGNALS[name].flags}g`)]));
+const GLOBAL = Object.fromEntries(Object.keys(SIGNALS).map((name) => [name, new RegExp(SIGNALS[name].source, `${SIGNALS[name].flags.replace("g", "")}g`)]));
 
-// The first match whose sentence is not about something else. Tries at most MAX_TRIED matches a page, so a page that
-// repeats a skipped phrase thousands of times costs no more than one that says it once.
+// The first match that has a clean quote (src/interface/quote.js) and whose sentence is not about something else. The
+// guards read the same sentence the quote shows, so a rule never decides on words from a neighbouring element of the
+// page. Tries at most MAX_TRIED matches a page, so a page that repeats a skipped phrase thousands of times costs no
+// more than one that says it once.
 const MAX_TRIED = 200;
-function firstKept(text, re, skip, ownDomain) {
+function firstKept(page, re, skip, ownDomain) {
   let tried = 0;
-  for (const m of text.matchAll(re)) {
-    if (!skip(sentenceAround(text, m.index, m.index + m[0].length).replace(/\s+/g, " "), ownDomain, m[0])) return m;
+  for (const m of page.text.matchAll(re)) {
+    const q = quoteAt(page.body, page.text, m.index, m.index + m[0].length, page.role);
+    const at = { ...page, context: () => blockContext(page.body, page.text, m.index, m.index + m[0].length, page.role) };
+    if (q && !(skip && skip(q.quote, ownDomain, m[0], at, q.label))) return { index: m.index, ...q };
     tried += 1;
     if (tried >= MAX_TRIED) return null;
   }
   return null;
 }
 
-function findSignals(observations, bodies, targetUrl) {
+function findSignals(observations, bodies, targetUrl, names) {
   const ownDomain = registrableDomain(new URL(targetUrl).hostname);
   const found = Object.fromEntries(Object.keys(SIGNALS).map((name) => [name, []]));
   for (const obs of observations) {
     const body = bodies.get(obs.id);
     if (!body) continue;
-    const text = body.html ? htmlToText(body.text) : body.text;
-    for (const [name, re] of Object.entries(SIGNALS)) {
+    const page = { body, role: obs.role, names, text: body.html ? htmlToText(body.text) : body.text };
+    for (const name of Object.keys(SIGNALS)) {
       if (found[name].length >= EVIDENCE_PER_SIGNAL) continue;
-      // A sitemap's URL slugs ("/posts/x402-launch") are page names, and a template or example page
-      // (vercel.com/templates/next.js/x402-ai-starter) is code for the reader's own app: neither documents paying this product.
-      if (name === "payPerRequest" && (obs.role === "sitemap" || EXAMPLE_PAGE.test(new URL(obs.url).pathname))) continue;
-      // Guarded signals try every match, so one sentence about something else does not hide a real one.
-      const skip = SKIP[name];
-      const match = skip ? firstKept(text, GLOBAL[name], skip, ownDomain) : re.exec(text);
-      if (match) found[name].push({ obs: obs.id, quote: quoteAround(text, match.index), agentFacing: AGENT_FACING.has(obs.role) });
+      // A sitemap's URL slugs ("/posts/x402-launch", "/blog/can-an-ai-agent-sign-up-for-a-saas") are page names, not
+      // claims. A template or example page (vercel.com/templates/next.js/x402-ai-starter) is code for the reader's own
+      // app: it does not document paying this product.
+      if (obs.role === "sitemap") continue;
+      if (name === "payPerRequest" && EXAMPLE_PAGE.test(new URL(obs.url).pathname)) continue;
+      // Every match is tried, so one sentence about something else, or words run together from two elements, does not
+      // hide a real one.
+      const match = firstKept(page, GLOBAL[name], SKIP[name], ownDomain);
+      if (match) found[name].push({ obs: obs.id, quote: match.quote, ...(match.label ? { label: match.label } : {}), agentFacing: AGENT_FACING.has(obs.role) });
     }
   }
   return found;
@@ -360,14 +437,14 @@ function needsFor(id, found) {
 const NEED_SIGNALS = { inbox: ["emailStep"], cli: ["cliBootstrap"], wallet: ["payPerRequest"], agent_identity: ["agentIdSignIn", "agentIdentity"] };
 function needsEvidenceFor(needs, found) {
   const ordered = (entries) => [...entries.filter((e) => e.agentFacing), ...entries.filter((e) => !e.agentFacing)];
-  return Object.fromEntries(needs.map((need) => [need, ordered(NEED_SIGNALS[need].flatMap((name) => found[name] || [])).map(({ obs, quote }) => ({ obs, quote }))]));
+  return Object.fromEntries(needs.map((need) => [need, ordered(NEED_SIGNALS[need].flatMap((name) => found[name] || [])).map(({ obs, quote, label }) => ({ obs, quote, ...(label ? { label } : {}) }))]));
 }
 
 function pattern(id, found, signalNames, reason) {
   // The product's agent-facing pages first: a quote from llms.txt or an agent-signup
   // page says more than the same words in homepage navigation.
   const entries = signalNames.flatMap((name) => found[name]);
-  const evidence = [...entries.filter((e) => e.agentFacing), ...entries.filter((e) => !e.agentFacing)].map(({ obs, quote }) => ({ obs, quote }));
+  const evidence = [...entries.filter((e) => e.agentFacing), ...entries.filter((e) => !e.agentFacing)].map(({ obs, quote, label }) => ({ obs, quote, ...(label ? { label } : {}) }));
   const documented = signalNames.some((name) => found[name].some((entry) => entry.agentFacing));
   return {
     id,
@@ -404,9 +481,27 @@ function findApiHosts(doc, bodies) {
   return [...hosts.values()];
 }
 
+// A signup page on another company's site that the product's agent-facing pages send the agent to: AgentID's llms.txt
+// "[Get started](https://console.agentmail.to/sign-up): Create an AgentMail inbox to get an AgentID". That page is not
+// read, so whether an agent can sign up there is unknown, not a gap in this product's docs.
+const SIGNUP_URL = /https:\/\/([a-z0-9.-]+\.[a-z]{2,})(\/[^\s"'`<>)\]]*)?/gi;
+const SIGNUP_PATH = /\/(?:sign-?up|register|get-started)(?:[/?#]|$)/i;
+function findSignupElsewhere(doc, bodies) {
+  for (const obs of doc.observations) {
+    const body = bodies.get(obs.id);
+    if (!body || !obs.ok || !AGENT_FACING.has(obs.role)) continue;
+    const text = body.html ? htmlToText(body.text) : body.text;
+    for (const match of text.matchAll(SIGNUP_URL)) {
+      if (sameSite(`https://${match[1]}/`, doc.target.url) || !SIGNUP_PATH.test(match[2] || "")) continue;
+      return { domain: registrableDomain(match[1].toLowerCase()), url: match[0], evidence: [{ obs: obs.id, quote: quoteAround(text, match.index) }] };
+    }
+  }
+  return null;
+}
+
 export function detectOnboarding(doc, bodies) {
   const observations = doc.observations;
-  const found = findSignals(observations, bodies, doc.target.url);
+  const found = findSignals(observations, bodies, doc.target.url, productNames(doc));
   const onIssuerSite = sameSite(AGENTID_ISSUER, doc.target.url);
   const agentId = onIssuerSite ? { entries: [], ownerDocumented: false } : findAgentIdSignIn(doc, bodies);
   found.agentIdSignIn = agentId.entries;
@@ -462,6 +557,7 @@ export function detectOnboarding(doc, bodies) {
   return {
     patterns,
     apiHosts: findApiHosts(doc, bodies),
+    signupElsewhere: findSignupElsewhere(doc, bodies),
     primary: agentFirst?.id || patterns[0]?.id || null,
     reason: patterns.length ? `${patterns.length} way${patterns.length === 1 ? "" : "s"} for an agent to start, from the sources read.` : `No way for an agent to start was found in the sources read.${doc.otherHostsSkipped ? " Links to other hosts were not read." : ""} This is not evidence that none exists.`,
   };

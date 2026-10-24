@@ -254,7 +254,7 @@ export function evaluatePricing(x, observations) {
   return {
     model: pj?.value.revenueModel ? { value: pj.value.revenueModel, method: "extracted", evidence: pj.evidence } : null,
     plans: plans.map((p) => ({ ...p, evidence: pj.evidence })),
-    observedPrices: pagesFound.map((p) => ({ prices: p.value.prices, evidence: p.evidence })),
+    observedPrices: pagesFound.map((p) => ({ prices: p.value.prices, evidence: p.evidence, ...(p.value.paidQuote ? { paidQuote: p.value.paidQuote } : {}) })),
     agentCanDetermineCost: cost,
     ambiguities,
   };

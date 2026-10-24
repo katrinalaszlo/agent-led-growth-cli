@@ -64,7 +64,7 @@ function needsOf(pattern) {
     if (!NEEDS_SENTENCE[need]) throw new Error(`no sentence for need "${need}"`);
     return NEEDS_SENTENCE[need];
   }).join(" ");
-  const quotes = kept.flatMap((need) => quoted(need).slice(0, 1).map((e) => ({ for: need, obs: e.obs, quote: e.quote })));
+  const quotes = kept.flatMap((need) => quoted(need).slice(0, 1).map((e) => ({ for: need, obs: e.obs, quote: e.quote, ...(e.label ? { label: e.label } : {}) })));
   return { kept, sentence, quotes };
 }
 
@@ -124,6 +124,9 @@ function signup(doc) {
   if (existing?.cli === "token") return step("signup", "handoff", "A person creates the account and a token. The agent's CLI takes the token from a flag or an environment variable, with no browser.", refs(existing));
   if (existing?.cli === "browser") return step("signup", "handoff", "A person creates the account and signs the CLI in through a browser; no token option was found in the pages read. The agent carries on from there.", refs(existing));
   if (existing) return step("signup", "handoff", "A person creates the account and gives the agent a key. The agent carries on from there.", refs(existing));
+  // The product sends the agent to sign up on another company's site, which is not read: unknown, not a gap.
+  const elsewhere = doc.onboarding?.signupElsewhere;
+  if (elsewhere) return step("signup", "not_checked", `The docs send the agent to sign up on ${elsewhere.domain}, another company's site, which was not read. Only a test run shows whether an agent can sign up there.`, elsewhere.evidence.map((e) => e.obs));
   return step("signup", "needs_person", "The pages read document no way for an agent to sign up. A person may have to create the account; only a real agent run can confirm.");
 }
 
@@ -138,6 +141,8 @@ function access(doc, signupStep) {
   const self = (doc.onboarding?.patterns || []).find((p) => SIGNUP_PATTERNS.has(p.id));
   if (signupStep.state === "agent_can" && self?.provider === "AgentID") return step("access", "agent_can", "Signed in with AgentID, the agent holds its own account and gets its key or session from it, not from a person.", [...refs, ...signupStep.basedOn]);
   if (signupStep.state === "agent_can") return step("access", "agent_can", "The agent signup path hands back a key the agent can use.", [...refs, ...signupStep.basedOn]);
+  const elsewhere = doc.onboarding?.signupElsewhere;
+  if (elsewhere && signupStep.state === "not_checked") return step("access", "not_checked", `The agent gets its credential where it signs up, on ${elsewhere.domain}. Only a test run shows whether it can.`, [...refs, ...signupStep.basedOn]);
   if (methods.length || terms.length) return step("access", "needs_person", `The docs describe ${describeAuth(methods, terms)}, but the pages read do not show how an agent gets one.`, refs);
   return step("access", "not_checked", "The docs read do not say how an agent authenticates.", refs);
 }
@@ -154,18 +159,20 @@ function pay(doc) {
   const plans = doc.pricing?.plans || [];
   const observed = doc.pricing?.observedPrices || [];
   const paidPlans = plans.filter((p) => typeof p.amount === "number" && p.amount > 0);
-  const paidText = observed.filter((o) => (o.prices || []).some((price) => /[1-9]/.test(price)));
+  // The pricing page first: a homepage price can be anything (a demo's "$49.00", a funding round).
+  const roleOf = (o) => doc.observations?.find((x) => x.id === o.evidence?.[0]?.obs)?.role;
+  const paidText = observed.filter((o) => (o.prices || []).some((price) => /[1-9]/.test(price))).sort((a, b) => Number(roleOf(b) === "pricing") - Number(roleOf(a) === "pricing"));
   const refs = [...plans.flatMap((p) => (p.evidence || []).map((e) => e.obs)), ...paidText.flatMap((o) => (o.evidence || []).map((e) => e.obs))];
   // A purchase the product's own pages document (src/interface/purchase.js). One approval by a person, then the agent
   // buys on its own, is a handoff: a person steps in at a documented point and the agent carries on. It is not
   // agent_can, which would say no person is needed, and not needs_person, which would say a person checks out each time.
+  const quote = (entries, what) => (entries || []).filter((e) => e.quote).slice(0, 1).map((e) => ({ for: what, obs: e.obs, quote: e.quote, ...(e.label ? { label: e.label } : {}) }));
   const purchase = doc.pricing?.agentPurchase;
   const purchaseRefs = (purchase?.evidence || []).map((e) => e.obs);
-  const purchaseQuotes = (purchase?.evidence || []).filter((e) => e.quote).slice(0, 1).map((e) => ({ for: "payment", obs: e.obs, quote: e.quote }));
+  const purchaseQuotes = quote(purchase?.evidence, "payment");
   const perRequestCall = purchase?.rule === "pay_per_request_own_api";
   const checkoutCall = purchase?.rule === "checkout_protocol_own_api";
   const call = purchase?.call ? ` (${purchase.call})` : "";
-  const quote = (entries, what) => (entries || []).filter((e) => e.quote).slice(0, 1).map((e) => ({ for: what, obs: e.obs, quote: e.quote }));
   const over = purchase?.protocol ? ` over ${purchase.protocol}` : "";
   if (purchase?.approval === "once") {
     const how = perRequestCall ? `pays over ${purchase.protocol || "x402 or MPP"}${call}` : checkoutCall ? `checks out over ${purchase.protocol}${call}` : purchase.call ? `buys through ${purchase.call}${over}` : `buys through the API${over}`;
@@ -183,9 +190,22 @@ function pay(doc) {
   if (perRequest) return step("pay", "not_checked", "The docs mention paying per request over x402. A test with a real agent shows whether it can actually pay.", (perRequest.evidence || []).map((e) => e.obs), null, quote(perRequest.evidence, "payment"));
   // Only the product's own domain is read: a purchase path on a payments provider's site (Stripe Projects lists
   // Cloudflare, Neon, Turso and others on stripe.com) is not seen here, so the sentence says what was read.
-  if (paidPlans.length || paidText.length) return step("pay", "needs_person", "Paid plans are published. The pages read document no way for an agent to buy one, so a person may have to check out.", refs, null, quote(paidPlans.length ? paidPlans[0].evidence : paidText[0].evidence, "payment"));
+  // A paid price in prose counts only with a clean quote (the sentence or labelled element it is in): Cloudflare's
+  // pricing page carries its prices only inside a script's JSON, which is no sentence to show.
+  const quotedText = paidText.filter((o) => o.paidQuote);
+  if (paidPlans.length || quotedText.length) return step("pay", "needs_person", "Paid plans are published. The pages read document no way for an agent to buy one, so a person may have to check out.", refs, null, paidPlans.length ? planQuote(paidPlans[0]) : quote([quotedText[0].paidQuote], "payment"));
+  if (paidText.length) return step("pay", "not_checked", "Prices appear in the pages read, but not in a sentence or table that can be quoted. A test shows whether an agent can pay.", refs);
   if (plans.length || observed.length) return step("pay", "not_checked", "Only free plans were found, so there is nothing to pay for yet.", refs);
   return step("pay", "not_checked", "No plans were found in the pages read.");
+}
+
+// A paid plan from pricing.json, quoted as the plan it is rather than a cut of the file's JSON:
+// pricing.json: "Pro: 20 USD per month".
+function planQuote(plan) {
+  const obs = plan.evidence?.[0]?.obs;
+  if (!obs) return [];
+  const price = [plan.amount, plan.currency, plan.period ? `per ${plan.period}` : ""].filter((x) => x !== null && x !== "").join(" ");
+  return [{ for: "payment", obs, quote: `${plan.name || plan.id || "Plan"}: ${price}`, label: "pricing.json" }];
 }
 
 function use(doc) {
@@ -218,7 +238,7 @@ function withAgentId(doc, s, sentence) {
   const self = patterns.find((p) => SIGNUP_PATTERNS.has(p.id));
   const agentId = patterns.find((p) => p.provider === "AgentID");
   if (!agentId || agentId === self) return s;
-  const quotes = [...(s.quotes || []), ...agentId.evidence.filter((e) => e.quote).slice(0, 1).map((e) => ({ for: "agent_identity", obs: e.obs, quote: e.quote }))];
+  const quotes = [...(s.quotes || []), ...agentId.evidence.filter((e) => e.quote).slice(0, 1).map((e) => ({ for: "agent_identity", obs: e.obs, quote: e.quote, ...(e.label ? { label: e.label } : {}) }))];
   return { ...s, reason: `${s.reason} ${sentence}`, basedOn: [...new Set([...s.basedOn, ...agentId.evidence.map((e) => e.obs)])], quotes };
 }
 

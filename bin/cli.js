@@ -406,8 +406,9 @@ Examples:
       const chosen = onboarding?.patterns?.find((p) => p.id === (config.onboarding || onboarding.primary));
       // Only with the sentence it came from: a need without a quote is not reported (interface.json from before 0.8.3
       // has none).
-      const inboxQuote = chosen?.needs?.includes("inbox") ? chosen.needsEvidence?.inbox?.[0]?.quote : null;
-      if (inboxQuote && !process.env.AGENTMAIL_API_KEY && !opts.inbox) plan.warnings = [`The product's signup sends an emailed code or link ("${inboxQuote}") and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive.`];
+      const inboxEvidence = chosen?.needs?.includes("inbox") ? chosen.needsEvidence?.inbox?.[0] : null;
+      const inboxQuote = inboxEvidence?.quote ? `${inboxEvidence.label ? `${inboxEvidence.label}: ` : ""}"${inboxEvidence.quote}"` : null;
+      if (inboxQuote && !process.env.AGENTMAIL_API_KEY && !opts.inbox) plan.warnings = [`The product's signup sends an emailed code or link (${inboxQuote}) and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive.`];
       if (opts.json) process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
       else for (const line of renderPlan(plan, style)) console.error(line);
       process.exit(plan.ready ? 0 : 2);

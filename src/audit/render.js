@@ -77,9 +77,9 @@ export function renderSteps(audit, style) {
     out.push(`  ${mark(s.state, style)} ${s.name.padEnd(NAME)}  ${first.padEnd(REASON)}  ${style.dim(TAG[s.basis] || s.basis)}`);
     for (const line of rest) out.push(`  ${" ".repeat(NAME + 4)}${line}`);
     // A claim that the product requires something is shown with the sentence it came from, so a reader can check it.
+    // The quote is whole (src/interface/quote.js), never cut here; an element that is not a sentence carries its label.
     for (const q of s.quotes || []) {
-      const text = q.quote.length > 160 ? `${q.quote.slice(0, 157).replace(/\s+\S*$/, "")}...` : q.quote;
-      for (const line of wrap(`"${text}" (${pathOf(q.url)})`, 60)) out.push(`  ${" ".repeat(NAME + 4)}${style.dim(line)}`);
+      for (const line of wrap(`${q.label ? `${q.label}: ` : ""}"${q.quote}" (${pathOf(q.url)})`, 60)) out.push(`  ${" ".repeat(NAME + 4)}${style.dim(line)}`);
     }
   }
   return out;
