@@ -535,8 +535,8 @@ describe("verify: command", () => {
     delete env.AGENTMAIL_API_KEY;
     const run = join(cwd, ".alg", "neon.com", "2026-10-09T00-00-00-aaaaaa");
     mkdirSync(run, { recursive: true });
-    writeFileSync(join(run, "interface.json"), JSON.stringify({ onboarding: { primary: "try_then_claim", patterns: [{ id: "try_then_claim", needs: ["inbox"] }] } }));
-    const warning = "The product's docs mention an emailed code or link and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive.";
+    writeFileSync(join(run, "interface.json"), JSON.stringify({ onboarding: { primary: "try_then_claim", patterns: [{ id: "try_then_claim", needs: ["inbox"], needsEvidence: { inbox: [{ obs: "obs_03", quote: "Sign up, then enter the verification code we email you." }] } }] } }));
+    const warning = `The product's signup sends an emailed code or link ("Sign up, then enter the verification code we email you.") and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive.`;
     const json = spawnSync(process.execPath, [CLI, "test", "--check", "--json"], { cwd, encoding: "utf8", env });
     assert.equal(json.status, 0, json.stderr);
     const plan = JSON.parse(json.stdout);
@@ -544,9 +544,19 @@ describe("verify: command", () => {
     assert.deepEqual(plan.warnings, [warning]);
     const text = spawnSync(process.execPath, [CLI, "test", "--check"], { cwd, encoding: "utf8", env });
     assert.equal(text.status, 0);
-    assert.match(text.stderr, /READY {2}Nothing ran\.[^\n]*\n {2}The product's docs mention an emailed code or link/);
+    assert.match(text.stderr, /READY {2}Nothing ran\.[^\n]*\n {2}The product's signup sends an emailed code or link/);
     const relayed = spawnSync(process.execPath, [CLI, "test", "--check", "--json", "--inbox", "me@example.com"], { cwd, encoding: "utf8", env });
     assert.equal(JSON.parse(relayed.stdout).warnings, undefined);
+  });
+
+  it("--check does not warn about an inbox when the need carries no quote (interface.json from before 0.8.3)", () => {
+    const { cwd, env } = checkIn(fakeClaude(true));
+    delete env.AGENTMAIL_API_KEY;
+    const run = join(cwd, ".alg", "neon.com", "2026-10-09T00-00-00-aaaaaa");
+    mkdirSync(run, { recursive: true });
+    writeFileSync(join(run, "interface.json"), JSON.stringify({ onboarding: { primary: "try_then_claim", patterns: [{ id: "try_then_claim", needs: ["inbox"] }] } }));
+    const json = spawnSync(process.execPath, [CLI, "test", "--check", "--json"], { cwd, encoding: "utf8", env });
+    assert.equal(JSON.parse(json.stdout).warnings, undefined);
   });
 
   it("--check and a real run both stop when Claude Code is signed out", () => {

@@ -9,6 +9,15 @@ export function makeStyle(enabled) {
 import { PASSING, mark, label } from "../dashboard/strip.js";
 const TAG = { observed: "from your files", heuristic: "from page text", not_checked: "needs a test run", tested: "from your test" };
 
+// The page a quote is on, as a path: "/docs.md".
+const pathOf = (url) => {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url || "";
+  }
+};
+
 
 // Breaks text into lines of at most `width` characters, at spaces. A word longer than a line (a long URL) is split.
 export function wrap(text, width) {
@@ -26,6 +35,14 @@ export function wrap(text, width) {
 }
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const listNames = (names) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
+// The outcome of the newest test of this product on this machine, from the funnel's evidence, or null.
+export function latestTestOutcome(funnel) {
+  const tests = (funnel?.steps || []).flatMap((s) => (s.evidence || []).filter((e) => e.kind === "test"));
+  tests.sort((a, b) => (b.at > a.at ? 1 : b.at < a.at ? -1 : 0));
+  return tests[0]?.outcome || null;
+}
 
 // The answer to "can an agent do it?", before the tally: which steps the pages leave an agent without.
 const DOES = { discover: "finds you", understand: "understands what you sell", signup: "signs up", access: "gets a key", use: "uses the product", pay: "pays", manage: "changes a plan" };
@@ -59,6 +76,11 @@ export function renderSteps(audit, style) {
     const [first = "", ...rest] = wrap(s.reason, REASON);
     out.push(`  ${mark(s.state, style)} ${s.name.padEnd(NAME)}  ${first.padEnd(REASON)}  ${style.dim(TAG[s.basis] || s.basis)}`);
     for (const line of rest) out.push(`  ${" ".repeat(NAME + 4)}${line}`);
+    // A claim that the product requires something is shown with the sentence it came from, so a reader can check it.
+    for (const q of s.quotes || []) {
+      const text = q.quote.length > 160 ? `${q.quote.slice(0, 157).replace(/\s+\S*$/, "")}...` : q.quote;
+      for (const line of wrap(`"${text}" (${pathOf(q.url)})`, 60)) out.push(`  ${" ".repeat(NAME + 4)}${style.dim(line)}`);
+    }
   }
   return out;
 }
@@ -85,10 +107,20 @@ export function renderSummary(audit, paths, style, relative, savedTo) {
 // What to do next, as the README's three steps: 1 check, 2 fix, 3 test. With fixes, step 2 names the first prompt
 // by its full path, so it can be copied; the test commands follow for later. They name the product, so test runs on
 // it whatever alg.yml the folder holds.
-export function renderNext(audit, paths, style, relative) {
+// latestTest: the outcome of the newest local test of this product (latestTestOutcome), or null. After a passing test
+// with nothing to fix, Next says what is left instead of suggesting the same test again.
+export function renderNext(audit, paths, style, relative, latestTest = null) {
   const cmd = `npx agent-led-growth test ${audit.target.host}`;
   const test = [`        ${style.bold(`${cmd} --check`)}`, `        ${style.bold(cmd)}`, ""];
   const step3 = "Step 3 of 3: test. The plan is free; a signup uses your Claude Code.";
+  if (!audit.findings.length && (latestTest === "passed" || latestTest === "handoff")) {
+    const skipped = audit.steps.filter((s) => s.state === "not_applicable").map((s) => s.name);
+    const open = audit.steps.filter((s) => s.state === "not_checked").map((s) => s.name);
+    const left = open.length ? `Not shown by a test yet: ${listNames(open)}.` : "Nothing left to fix or test.";
+    const na = skipped.length ? ` ${listNames(skipped)} ${skipped.length === 1 ? "doesn't" : "don't"} apply.` : "";
+    const [first, ...rest] = wrap(`Your latest test passed. ${left}${na} Keep it passing in CI:`, 68);
+    return [`  ${style.bold("Next")}  ${first}`, ...rest.map((l) => `        ${l}`), `        ${style.bold(`${cmd} --yes --json`)}`, ""];
+  }
   if (!audit.findings.length) return [`  ${style.bold("Next")}  ${step3}`, ...test];
   return [
     `  ${style.bold("Next")}  Step 2 of 3: fix. Paste a prompt into your coding agent, deploy,`,

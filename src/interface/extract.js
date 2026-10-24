@@ -172,7 +172,9 @@ export function extractPricingJson(observations, bodies) {
 
 const PRICE_RE = /(?:\$|€|£|USD\s?)\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:\/|per)\s?(?:mo(?:nth)?|yr|year|seat|user|request|call|1k|1000|k)\b)?/gi;
 const AMBIGUITY_RE = /contact (?:us|sales)|custom pricing|talk to sales|get a quote|enterprise pricing|request a demo/gi;
-const USAGE_RE = /usage[- ]based|pay[- ]as[- ]you[- ]go|per (?:request|call|token|seat|user)|metered/gi;
+// "per request" is a price only beside a price word: "priced per request", "billed per call". Alone it is usually a
+// limit: Track's "4 KB per request", "What it sends, per request".
+const USAGE_RE = /usage[- ]based|pay[- ]as[- ]you[- ]go|\b(?:priced|charged|billed|paid|pay|costs?|fee|price)\s+(?:\w+\s+)?per (?:request|call|token|seat|user)\b|metered billing/gi;
 
 export function extractPricingPages(observations, bodies) {
   const out = [];

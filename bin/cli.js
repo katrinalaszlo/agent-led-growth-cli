@@ -25,7 +25,7 @@ import { runHarness, TASKS } from "../src/harness/index.js";
 import { inspect, buildAudit, writeAudit, parseTarget, unreachableReason, DEFAULT_TASK } from "../src/audit/index.js";
 import { defaultAnswers, askQuestions, QUESTIONS } from "../src/audit/questions.js";
 import { readConfig, writeConfig, writeVerifyCall, configHost, CONFIG_FILE } from "../src/audit/config.js";
-import { makeStyle, renderAnswer, renderVerdict, renderSteps, renderSummary, renderNext, renderStandardsStart, renderStandards, renderStrip } from "../src/audit/render.js";
+import { makeStyle, renderAnswer, renderVerdict, renderSteps, renderSummary, renderNext, renderStandardsStart, renderStandards, renderStrip, latestTestOutcome } from "../src/audit/render.js";
 import { localJourney, localTestRuns } from "../src/verify/journey.js";
 import { applyEvidence } from "../src/interface/evidence.js";
 import { runStandards } from "../src/audit/standards.js";
@@ -184,7 +184,9 @@ Examples:
     if (!opts.json) for (const line of renderSummary(audit, paths, style, rel, savedTo)) say(line);
     // Skipped, the benchmarks get one line above Next, so Next stays the last thing on screen.
     if (!opts.json && !opts.standards) for (const line of renderStandards(null, style)) say(line);
-    if (!opts.json) for (const line of renderNext(audit, paths, style, rel)) say(line);
+    const latestTest = latestTestOutcome(funnel);
+    const testPassed = latestTest === "passed" || latestTest === "handoff";
+    if (!opts.json) for (const line of renderNext(audit, paths, style, rel, latestTest)) say(line);
 
     let standardsFile = null;
     if (opts.standards) {
@@ -216,7 +218,7 @@ Examples:
       if (!opts.json) for (const line of renderStandards(standards, style, raw ? rel(raw) : null)) say(line);
       // The last line on screen is the next action, not the benchmark table.
       if (!opts.json) {
-        const next = audit.findings.length ? " Next: the fix prompt above, then check again." : ` Next: ${style.bold(`${TEST_CMD} ${host} --check`)}`;
+        const next = audit.findings.length ? " Next: the fix prompt above, then check again." : testPassed ? " Your latest test passed; Next is above." : ` Next: ${style.bold(`${TEST_CMD} ${host} --check`)}`;
         say(`  Done in ${duration(Date.now() - started)}.${next}`);
         say("");
       }
@@ -227,7 +229,7 @@ Examples:
     if (opts.failOn && audit.findings.some((f) => FAIL_ON[opts.failOn].includes(f.severity))) process.exitCode = 1;
     // With nothing to fix, the next step is a test, and a person at a terminal can start it here.
     const canAsk = Boolean(process.stdin.isTTY && process.stderr.isTTY) && !opts.yes && !opts.json;
-    if (canAsk && !audit.findings.length) await offerTest({ audit, style, say });
+    if (canAsk && !audit.findings.length && !testPassed) await offerTest({ audit, style, say });
   });
 
 // check reads public pages; test has a real agent do the steps. With nothing to fix, a person at a terminal can
@@ -402,7 +404,10 @@ Examples:
       // The onboarding pattern chosen in alg.yml, as the last check's interface.json describes it.
       const onboarding = latestInterface(process.cwd(), url)?.doc.onboarding;
       const chosen = onboarding?.patterns?.find((p) => p.id === (config.onboarding || onboarding.primary));
-      if (chosen?.needs?.includes("inbox") && !process.env.AGENTMAIL_API_KEY && !opts.inbox) plan.warnings = ["The product's docs mention an emailed code or link and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive."];
+      // Only with the sentence it came from: a need without a quote is not reported (interface.json from before 0.8.3
+      // has none).
+      const inboxQuote = chosen?.needs?.includes("inbox") ? chosen.needsEvidence?.inbox?.[0]?.quote : null;
+      if (inboxQuote && !process.env.AGENTMAIL_API_KEY && !opts.inbox) plan.warnings = [`The product's signup sends an emailed code or link ("${inboxQuote}") and no inbox is set. Set AGENTMAIL_API_KEY or pass --inbox, or the run may end inconclusive.`];
       if (opts.json) process.stdout.write(JSON.stringify(plan, null, 2) + "\n");
       else for (const line of renderPlan(plan, style)) console.error(line);
       process.exit(plan.ready ? 0 : 2);

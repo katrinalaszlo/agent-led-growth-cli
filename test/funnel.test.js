@@ -18,7 +18,8 @@ function doc(overrides = {}) {
 }
 
 test("what a self-serve signup needs is a sentence, one per need, never a bare token", () => {
-  const pattern = (needs) => ({ onboarding: { patterns: [{ id: "try_then_claim", name: "Try first, claim later", status: "documented", humanBoundary: "After the first job.", needs, evidence: [{ obs: "obs_1" }] }] } });
+  const needsEvidence = (needs) => Object.fromEntries(needs.map((n) => [n, [{ obs: "obs_1", quote: `the sentence that says ${n}` }]]));
+  const pattern = (needs) => ({ onboarding: { patterns: [{ id: "try_then_claim", name: "Try first, claim later", status: "documented", humanBoundary: "After the first job.", needs, needsEvidence: needsEvidence(needs), evidence: [{ obs: "obs_1" }] }] } });
   const reason = (needs) => buildFunnel(doc(pattern(needs))).steps.find((s) => s.id === "signup").reason;
   assert.equal(reason(["inbox"]), "The docs describe an agent signing up on its own (Try first, claim later). Needs an inbox the agent can read.");
   assert.equal(reason(["inbox", "cli"]), "The docs describe an agent signing up on its own (Try first, claim later). Needs an inbox the agent can read. Needs a shell where the agent can run the product's CLI.");
@@ -26,6 +27,13 @@ test("what a self-serve signup needs is a sentence, one per need, never a bare t
   assert.match(reason(["agent_identity"]), /Needs an identity provider the agent can sign in with\.$/);
   assert.doesNotMatch(reason(["inbox", "cli"]), /It needs:|\binbox\b\.|\bcli\b/);
   assert.throws(() => reason(["fax"]), /no sentence for need "fax"/);
+  // Each need carries its sentence; a need with no quote is not said at all.
+  const signup = buildFunnel(doc(pattern(["inbox"]))).steps.find((s) => s.id === "signup");
+  assert.deepEqual(signup.quotes, [{ for: "inbox", obs: "obs_1", quote: "the sentence that says inbox" }]);
+  const unquoted = { onboarding: { patterns: [{ id: "try_then_claim", name: "Try first, claim later", status: "documented", humanBoundary: "After the first job.", needs: ["inbox"], evidence: [{ obs: "obs_1" }] }] } };
+  const bare = buildFunnel(doc(unquoted)).steps.find((s) => s.id === "signup");
+  assert.doesNotMatch(bare.reason, /inbox/);
+  assert.equal(bare.quotes, undefined);
 });
 
 test("a product with no agent signup stops at Sign up and says what to build", () => {
@@ -57,7 +65,7 @@ test("a person handing the agent a key is a handoff, which passes", () => {
 });
 
 test("steps public evidence cannot prove are not checked, and never count as a stop", () => {
-  const f = buildFunnel(doc({ pricing: { agentCanDetermineCost: verdict("yes"), ambiguities: [], plans: [{ id: "free", amount: 0 }] }, onboarding: { patterns: [{ id: "agent_is_customer", name: "Agent is the customer", status: "documented", needs: [] }] } }));
+  const f = buildFunnel(doc({ pricing: { agentCanDetermineCost: verdict("yes"), ambiguities: [], plans: [] }, onboarding: { patterns: [{ id: "agent_is_customer", name: "Agent is the customer", status: "documented", needs: [] }] } }));
   assert.equal(f.steps.find((s) => s.id === "manage").state, "not_checked");
   assert.equal(f.stopsAt, null);
   assert.match(f.headline, /^Your public pages document \d of 7 steps\. No step has been tested yet/);

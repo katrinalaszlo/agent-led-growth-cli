@@ -53,6 +53,8 @@ $ npx agent-led-growth check resend.com
 
 Six seconds. No account, no Docker, nothing sent to your product but GET requests. Needs Node 20.9 or later.
 
+When a step says your product needs or requires something (an inbox, a payment, a person at checkout), the sentence it came from is printed under the step with the page it is on. A sentence that says the opposite ("takes no email"), an example ("such as a verification email") or text about your own customers never counts. A step that does not apply is marked `-`: Pay when every plan in /pricing.json is free, Manage when there is one free plan.
+
 Then fix and test:
 
 ```bash

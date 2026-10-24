@@ -227,6 +227,13 @@ export function evaluateAuthentication(x, observations) {
   return { methods, mentions, requirement, agentCanUnderstandSetup: setup, friction };
 }
 
+// pricing.json lists plans and every one costs 0: nothing to buy. Only machine-readable plans count; a price in prose
+// can be a demo's sample data (Track's homepage shows a customer paying $49.00).
+export function freePlansOnly(pricing) {
+  const plans = pricing?.plans || [];
+  return plans.length > 0 && plans.every((p) => p.amount === 0);
+}
+
 export function evaluatePricing(x, observations) {
   const pj = x.pricingJson;
   const pagesFound = x.pricingPages;

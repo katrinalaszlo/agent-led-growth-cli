@@ -1,4 +1,5 @@
 import { htmlToText, registrableDomain, sameSite } from "./sources.js";
+import { freePlansOnly } from "./evaluate.js";
 
 // Which ways can an agent start using this product? Read from public docs only, so every pattern is a claim the docs
 // make, with the quotes that make it; none is a result. A product can support several. Rules, not a model: each signal
@@ -41,7 +42,9 @@ const SIGNALS = {
   // use it to mean "claim first" (Cosmic) or "over your plan" (Inkbox).
   payPerRequest: /\bx402\b|\bX-PAYMENT\b|\bPAYMENT-REQUIRED\b/,
   // The documented way in is a command-line tool rather than an HTTP call.
-  cliBootstrap: /\b(?:npx|wrangler|mem0|stripe|npm i(?:nstall)?|pip install|brew install)\b[^\n]{0,60}(?:--temporary|--agent|\binit\b|\bsign-?up\b|projects init)/i,
+  // At most four words between the tool and the flag or subcommand, so it is one command line: Track's docs say
+  // "npx agent-led-growth check <url> runs a real agent through signup", which is prose after a command, not a signup.
+  cliBootstrap: /\b(?:npx|wrangler|mem0|stripe|npm i(?:nstall)?|pip install|brew install)\b(?:[ \t]+[^\s`]+){0,4}?[ \t]+(?:--temporary|--agent|init\b|sign-?up\b|projects init)/i,
   // The product's CLI takes a token without a browser, so an agent can run it unattended once a person has made the
   // token: Vercel's "Set the VERCEL_TOKEN environment variable" or "Pass the --token option", GitHub's "--with-token".
   // An environment variable counts only where the text calls it one: code samples are full of other _API_KEY names.
@@ -245,12 +248,51 @@ const EXAMPLE_PAGE = /\/(?:templates?|examples?|starters?)\//i;
 // OAuth dynamic client registration (POST /oauth/register, /oauth2/register, /connect/register) registers a client app
 // with an authorization server; it is not an agent getting an account.
 const OAUTH_REGISTRATION = /\/(?:oauth2?|connect|clients?|dcr)\/regist(?:er|ration)\b/i;
+// A signal that says the product requires something (an inbox, a person setting access up, restricted access, a
+// payment) counts only from a sentence that says so about the product itself. Text that merely mentions the thing never
+// counts: a negation ("No project key can sign in to the dashboard"), an example ("such as opening a verification
+// email") or a sentence about the reader's own customers. Each kept match is quoted, and the quote is shown with the
+// step it decides.
+// A negation in the same clause just before the match: "A project key cannot sign in to the dashboard". A comma ends
+// the clause, so "If you don't have one, create an API key in the dashboard" still counts.
+const CLAUSE_NEGATION = /\b(?:no|not|never|cannot|can't|can not|without|don't|doesn't|won't|isn't|aren't|nothing)\b[^.,;:!?\n]{0,40}$/i;
+const negatedBefore = (sentence, match) => {
+  const at = sentence.indexOf(match.replace(/\s+/g, " "));
+  return at >= 0 && CLAUSE_NEGATION.test(sentence.slice(0, at));
+};
+// Expiry said not to happen: Track's "Unclaimed, nothing is deleted", "the workspace and key never expire".
+const NO_EXPIRY = /\b(?:nothing|never|not|no\s+\w+)\s+(?:is\s+|are\s+|will\s+|gets?\s+|be\s+|ever\s+)*(?:deleted|removed|expires?)\b|\bdo(?:es)?(?: not|n't) expire\b/i;
+// An example of something, not the product's own step: Track's "For a step your API never sees, such as opening a
+// verification email, send an onboarding_step event".
+const EXAMPLE = /\b(?:such as|for example|for instance|e\.g\.|i\.e\.)/i;
+// An inbox step counts only in a sentence about the product's own signup or sign-in path. The words are looked for
+// outside the match, so "Verification email never opened" (a sample error message in Track's docs) is not its own
+// context.
+const SIGNUP_CONTEXT = /\bsign(?:s|ing|ed)?[- ]?(?:up|in)\b|\bsignups?\b|\bregist(?:er|ers|ered|ering|ration)\b|\bcreat(?:e|es|ing) (?:an? |your |the )?(?:new )?account\b|\bonboard(?:ing)?\b|\bverif(?:y|ies|ied|ication)\b|\bconfirm(?:s|ed)?\b|\blog ?in\b|\bget (?:an? |your )?(?:API )?key\b/i;
+// The product saying there is no inbox step. Authoritative: one such sentence on the product's own pages clears every
+// inbox match. Track's "POST /v1/signup returns a key with no account, email or browser", "Track needs no inbox
+// verification", "takes no email and sends nothing to confirm". Not "without email": Telnyx's "Without email access the
+// flow falls back to..." is a condition, and its signup does send a magic link.
+export const NO_INBOX = /\b(?:takes|needs|requires|asks for|sends) no (?:e-?mail|inbox)\b|\bneeds? no inbox\b|\bno inbox (?:verification|step|needed|required)\b|\bno (?:account, )?e-?mail(?:,| or| needed| required)\b|\bno (?:e-?mail )?verification (?:e-?mail|code|link|step)\b|\bsends nothing to confirm\b/i;
+const withoutMatch = (sentence, match) => sentence.replace(match.replace(/\s+/g, " "), " ");
+// A line of a link index ("- [Email OTP](https://neon.com/docs/auth/...): Sign in and verify email addresses") describes
+// another page, often a feature the product sells, not the product's own signup.
+const INDEX_LINE = /^\s*(?:[-*]\s*)?\[[^\]]+\]\([^)]+\)/;
+// Signing up somewhere else: AgentMail's "Enable browser agents to sign up for services by extracting OTP codes".
+// AgentLine's "Receive OTP codes so your agent can sign up and verify" is a feature for signing up elsewhere too.
+const SIGNUP_ELSEWHERE = /\bsign(?:s|ing)? up for (?:services|other|any|third-party|apps|sites|websites)\b|\b(?:other|third-party) (?:services|apps|sites|websites)\b|\bso (?:your|the|an) agents? can sign up\b/i;
+// An optional step is not a requirement: Locus's "the human is needed only for an optional AgentMail OTP".
+const OPTIONAL = /\boptional(?:ly)?\b/i;
+
 // Whether a sentence holding a match is about something else; such a match is skipped and the next one tried.
 const SKIP = {
   bootstrap: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || SIGNUP_OFF.test(sentence) || PERSON_WITHOUT_ACCOUNT.test(sentence) || PAYMENT_WAY_IN.test(sentence) || CLIENT_REGISTRATION.test(sentence) || BROKERED.test(sentence) || (/^temporary\b/i.test(match) && STORED_THING.test(sentence)),
-  expiry: (sentence) => !ACCOUNT_THING.test(sentence) || STORED_THING.test(sentence),
+  expiry: (sentence) => !ACCOUNT_THING.test(sentence) || STORED_THING.test(sentence) || NO_EXPIRY.test(sentence),
+  restricted: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || negatedBefore(sentence, match),
+  emailStep: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || INDEX_LINE.test(sentence) || SIGNUP_ELSEWHERE.test(sentence) || OPTIONAL.test(sentence) || NO_INBOX.test(sentence) || negatedBefore(sentence, match) || !SIGNUP_CONTEXT.test(withoutMatch(sentence, match)),
+  humanFirst: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || negatedBefore(sentence, match),
   httpBootstrap: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || OAUTH_REGISTRATION.test(match),
-  payPerRequest: (sentence, ownDomain) => DOMAIN_ACTORS.test(sentence) || SELLER.test(sentence) || PROTOCOL_DESCRIPTION.test(sentence) || paysElsewhere(sentence, ownDomain),
+  payPerRequest: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || SELLER.test(sentence) || PROTOCOL_DESCRIPTION.test(sentence) || paysElsewhere(sentence, ownDomain) || negatedBefore(sentence, match),
 };
 const GLOBAL = Object.fromEntries(Object.keys(SKIP).map((name) => [name, new RegExp(SIGNALS[name].source, `${SIGNALS[name].flags}g`)]));
 
@@ -288,6 +330,18 @@ function findSignals(observations, bodies, targetUrl) {
   return found;
 }
 
+// The first sentence on the product's own pages saying signup has no inbox step, or null.
+function findNoInbox(doc, bodies) {
+  for (const obs of doc.observations) {
+    const body = bodies.get(obs.id);
+    if (!body || !sameSite(obs.url, doc.target.url)) continue;
+    const text = body.html ? htmlToText(body.text) : body.text;
+    const m = NO_INBOX.exec(text);
+    if (m) return { obs: obs.id, quote: quoteAround(text, m.index) };
+  }
+  return null;
+}
+
 // What testing this pattern end to end requires beyond HTTP requests: an inbox for an
 // email step, a command-line runner, a funded wallet. Whether a deployment has each is
 // decided where the report is shown, not here. Agent identity has no runner support.
@@ -300,6 +354,13 @@ function needsFor(id, found) {
   if (found.emailStep.length) needs.push("inbox");
   if (cliOnly) needs.push("cli");
   return needs;
+}
+
+// The quotes behind each need, so a step that says the product needs something can show the sentence it came from.
+const NEED_SIGNALS = { inbox: ["emailStep"], cli: ["cliBootstrap"], wallet: ["payPerRequest"], agent_identity: ["agentIdSignIn", "agentIdentity"] };
+function needsEvidenceFor(needs, found) {
+  const ordered = (entries) => [...entries.filter((e) => e.agentFacing), ...entries.filter((e) => !e.agentFacing)];
+  return Object.fromEntries(needs.map((need) => [need, ordered(NEED_SIGNALS[need].flatMap((name) => found[name] || [])).map(({ obs, quote }) => ({ obs, quote }))]));
 }
 
 function pattern(id, found, signalNames, reason) {
@@ -316,6 +377,7 @@ function pattern(id, found, signalNames, reason) {
     evidence,
     humanBoundary: PATTERNS[id].humanBoundary,
     needs: needsFor(id, found),
+    needsEvidence: needsEvidenceFor(needsFor(id, found), found),
   };
 }
 
@@ -352,6 +414,9 @@ export function detectOnboarding(doc, bodies) {
   // A signup call documented on a page written for agents is the product saying an agent can sign itself up, even
   // without the words "agent signup": Moltbook's skill.md says "register" and shows POST /api/v1/agents/register.
   found.bootstrap.push(...found.httpBootstrap.filter((e) => e.agentFacing && !found.bootstrap.some((b) => b.obs === e.obs)));
+  // The product saying it has no inbox step outweighs any mention of one.
+  const noInbox = findNoInbox(doc, bodies);
+  if (noInbox) found.emailStep = [];
   const has = (name) => found[name].length > 0;
   const patterns = [];
 
@@ -378,7 +443,9 @@ export function detectOnboarding(doc, bodies) {
     patterns.push(p);
   }
 
-  if (has("payPerRequest")) patterns.push(pattern("pay_per_request", found, ["payPerRequest"], "The docs describe paying per request over HTTP 402, with no account needed first."));
+  // Machine-readable pricing first: when pricing.json lists only free plans, x402 in prose is not a price. Track's docs
+  // name x402 as one of the tasks its sister product tests, and that read as Track charging per request.
+  if (has("payPerRequest") && !freePlansOnly(doc.pricing)) patterns.push(pattern("pay_per_request", found, ["payPerRequest"], "The docs describe paying per request over HTTP 402, with no account needed first."));
 
   // Only the signup side says a person sets access up: a key made in a dashboard, a token a person creates. An auth
   // scheme in the OpenAPI document (Turso's `bearerAuth: http bearer`) says how a request is signed, not who gets the

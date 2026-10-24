@@ -1,6 +1,7 @@
 import { STAGES, PILLAR } from "../schema/stages.js";
 import { AGENTID_NEEDS } from "./onboarding.js";
 import { PASSING } from "../dashboard/strip.js";
+import { freePlansOnly } from "./evaluate.js";
 
 // The seven-step answer for one public check: how far an agent can get, where it stops, and what to build.
 // Rule-based over the interface document only. Public evidence can show a path is documented; only a live
@@ -8,7 +9,9 @@ import { PASSING } from "../dashboard/strip.js";
 export const FUNNEL_SCHEMA = "agent-ready/funnel@1";
 // handoff: a person steps in at a documented point and the agent carries on. That is a working path, not a failure.
 // agent_did: a live test proved the step. Only a live test sets it.
-export const STEP_STATES = ["agent_did", "agent_can", "handoff", "needs_person", "blocked", "not_checked"];
+// not_applicable: the product's machine-readable files say the step has nothing to do (every plan in pricing.json is
+// free, so there is nothing to pay for). It neither passes nor fails and is left out of the counts.
+export const STEP_STATES = ["agent_did", "agent_can", "handoff", "needs_person", "blocked", "not_checked", "not_applicable"];
 // Kept under this name for callers; the order itself lives in schema/stages.js.
 export const FUNNEL_ORDER = STAGES;
 
@@ -52,15 +55,23 @@ const NEEDS_SENTENCE = {
   wallet: "Needs a wallet the agent can pay from.",
   agent_identity: "Needs an identity provider the agent can sign in with.",
 };
-function needsSentences(needs) {
-  return needs.map((need) => {
+// A step that says the product needs something carries the sentence it came from. A need with no quote is not said:
+// the rule is that a requirement is reported only with the exact text that states it.
+function needsOf(pattern) {
+  const quoted = (need) => (pattern.needsEvidence?.[need] || []).filter((e) => e.quote);
+  const kept = pattern.needs.filter((need) => quoted(need).length);
+  const sentence = kept.map((need) => {
     if (!NEEDS_SENTENCE[need]) throw new Error(`no sentence for need "${need}"`);
     return NEEDS_SENTENCE[need];
   }).join(" ");
+  const quotes = kept.flatMap((need) => quoted(need).slice(0, 1).map((e) => ({ for: need, obs: e.obs, quote: e.quote })));
+  return { kept, sentence, quotes };
 }
 
-function step(id, state, reason, basedOn = [], tip = null) {
+// quotes: [{ for, obs, quote }], the sentences behind a claim that the product requires something, shown with the step.
+function step(id, state, reason, basedOn = [], tip = null, quotes = []) {
   const out = { id, name: STEP_NAME[id], area: PILLAR[id], question: STEP_QUESTION[id], state, reason, basedOn: [...new Set(basedOn.filter(Boolean))] };
+  if (quotes.length) out.quotes = quotes;
   // Only a step known to fail gets a fix. An unchecked step needs a live test first.
   if (state === "needs_person" || state === "blocked") out.fix = FIX[id];
   // A passing step can still be easier for agents; that is a tip, not a fix.
@@ -103,8 +114,9 @@ function signup(doc) {
   const existing = patterns.find((p) => p.id === "existing_account");
   const refs = (p) => (p?.evidence || []).map((e) => e.obs);
   // The pattern's reason already names AgentID, what the agent needs, and whether the owner is shared.
-  if (self?.provider === "AgentID") return step("signup", "agent_can", self.reason, refs(self));
-  if (self && self.needs.length) return step("signup", "agent_can", `The docs describe an agent signing up on its own (${self.name}). ${needsSentences(self.needs)}`, refs(self));
+  const needs = self ? needsOf(self) : null;
+  if (self?.provider === "AgentID") return step("signup", "agent_can", self.reason, refs(self), null, needs.quotes);
+  if (self && needs.kept.length) return step("signup", "agent_can", `The docs describe an agent signing up on its own (${self.name}). ${needs.sentence}`, [...refs(self), ...needs.quotes.map((q) => q.obs)], null, needs.quotes);
   // "Agent is the customer" has no person step, and its boundary text says so ("None documented. ..."), which does
   // not read after "A person steps in".
   const boundary = !self?.humanBoundary ? "" : /^None\b/.test(self.humanBoundary) ? " No person step is documented: the agent holds the account itself." : ` A person steps in ${self.humanBoundary.charAt(0).toLowerCase()}${self.humanBoundary.slice(1)}`;
@@ -149,24 +161,29 @@ function pay(doc) {
   // agent_can, which would say no person is needed, and not needs_person, which would say a person checks out each time.
   const purchase = doc.pricing?.agentPurchase;
   const purchaseRefs = (purchase?.evidence || []).map((e) => e.obs);
+  const purchaseQuotes = (purchase?.evidence || []).filter((e) => e.quote).slice(0, 1).map((e) => ({ for: "payment", obs: e.obs, quote: e.quote }));
   const perRequestCall = purchase?.rule === "pay_per_request_own_api";
   const checkoutCall = purchase?.rule === "checkout_protocol_own_api";
   const call = purchase?.call ? ` (${purchase.call})` : "";
+  const quote = (entries, what) => (entries || []).filter((e) => e.quote).slice(0, 1).map((e) => ({ for: what, obs: e.obs, quote: e.quote }));
   const over = purchase?.protocol ? ` over ${purchase.protocol}` : "";
   if (purchase?.approval === "once") {
     const how = perRequestCall ? `pays over ${purchase.protocol || "x402 or MPP"}${call}` : checkoutCall ? `checks out over ${purchase.protocol}${call}` : purchase.call ? `buys through ${purchase.call}${over}` : `buys through the API${over}`;
-    return step("pay", "handoff", `A person sets payment up once (an approval link, a spending cap, a saved card or a delegation), then the agent ${how}, with no browser checkout. The docs say so; a test shows whether it works.`, purchaseRefs);
+    return step("pay", "handoff", `A person sets payment up once (an approval link, a spending cap, a saved card or a delegation), then the agent ${how}, with no browser checkout. The docs say so; a test shows whether it works.`, purchaseRefs, null, purchaseQuotes);
   }
-  if (purchase?.rule === "agent_buys_through_api") return step("pay", "agent_can", `The docs describe an agent buying through the API${call}${over}, and no person approving first. A test shows whether it works.`, purchaseRefs);
-  if (perRequestCall) return step("pay", "agent_can", `The docs show a paid call over ${purchase.protocol || "x402 or MPP"} on the product's own API${call}, with no browser checkout. The agent needs a funded wallet; a test shows whether the payment goes through.`, purchaseRefs);
-  if (checkoutCall && purchase.call) return step("pay", "agent_can", `The docs show a checkout an agent completes over ${purchase.protocol} on the product's own API${call}, with no browser checkout. A test shows whether a purchase goes through.`, purchaseRefs);
-  if (checkoutCall) return step("pay", "agent_can", `The product publishes a UCP business profile at /.well-known/ucp, so an agent can check out over UCP, with no browser checkout. A test shows whether a purchase goes through.`, purchaseRefs);
+  if (purchase?.rule === "agent_buys_through_api") return step("pay", "agent_can", `The docs describe an agent buying through the API${call}${over}, and no person approving first. A test shows whether it works.`, purchaseRefs, null, purchaseQuotes);
+  if (perRequestCall) return step("pay", "agent_can", `The docs show a paid call over ${purchase.protocol || "x402 or MPP"} on the product's own API${call}, with no browser checkout. The agent needs a funded wallet; a test shows whether the payment goes through.`, purchaseRefs, null, purchaseQuotes);
+  if (checkoutCall && purchase.call) return step("pay", "agent_can", `The docs show a checkout an agent completes over ${purchase.protocol} on the product's own API${call}, with no browser checkout. A test shows whether a purchase goes through.`, purchaseRefs, null, purchaseQuotes);
+  if (checkoutCall) return step("pay", "agent_can", `The product publishes a UCP business profile at /.well-known/ucp, so an agent can check out over UCP, with no browser checkout. A test shows whether a purchase goes through.`, purchaseRefs, null, purchaseQuotes);
+  // Machine-readable pricing comes before prose: with every plan in pricing.json at 0 and no purchase documented,
+  // there is nothing to pay for, whatever the page text says (a demo's "$49.00", x402 named as something tested).
+  if (freePlansOnly(doc.pricing)) return step("pay", "not_applicable", "Nothing to buy: every plan is free (pricing.json).", plans.flatMap((p) => (p.evidence || []).map((e) => e.obs)));
   // Pay-per-request wording is easy to misread: a billing product describing its own
   // customers' metering reads the same as an agent paying. Only a live test settles it.
-  if (perRequest) return step("pay", "not_checked", "The docs mention paying per request. A test with a real agent shows whether it can actually pay.", (perRequest.evidence || []).map((e) => e.obs));
+  if (perRequest) return step("pay", "not_checked", "The docs mention paying per request over x402. A test with a real agent shows whether it can actually pay.", (perRequest.evidence || []).map((e) => e.obs), null, quote(perRequest.evidence, "payment"));
   // Only the product's own domain is read: a purchase path on a payments provider's site (Stripe Projects lists
   // Cloudflare, Neon, Turso and others on stripe.com) is not seen here, so the sentence says what was read.
-  if (paidPlans.length || paidText.length) return step("pay", "needs_person", "Paid plans are published. The pages read document no way for an agent to buy one, so a person may have to check out.", refs);
+  if (paidPlans.length || paidText.length) return step("pay", "needs_person", "Paid plans are published. The pages read document no way for an agent to buy one, so a person may have to check out.", refs, null, quote(paidPlans.length ? paidPlans[0].evidence : paidText[0].evidence, "payment"));
   if (plans.length || observed.length) return step("pay", "not_checked", "Only free plans were found, so there is nothing to pay for yet.", refs);
   return step("pay", "not_checked", "No plans were found in the pages read.");
 }
@@ -186,7 +203,9 @@ function use(doc) {
   return step("use", "not_checked", "No API actions were found in the pages read.", refs);
 }
 
-function manage() {
+function manage(doc) {
+  const plans = doc.pricing?.plans || [];
+  if (plans.length === 1 && freePlansOnly(doc.pricing) && !doc.pricing.agentPurchase) return step("manage", "not_applicable", "One free plan: no plan or limit to change.", (plans[0].evidence || []).map((e) => e.obs));
   return step("manage", "not_checked", "Changing a plan or a limit can only be proven by a test run.");
 }
 
@@ -199,14 +218,15 @@ function withAgentId(doc, s, sentence) {
   const self = patterns.find((p) => SIGNUP_PATTERNS.has(p.id));
   const agentId = patterns.find((p) => p.provider === "AgentID");
   if (!agentId || agentId === self) return s;
-  return { ...s, reason: `${s.reason} ${sentence}`, basedOn: [...new Set([...s.basedOn, ...agentId.evidence.map((e) => e.obs)])] };
+  const quotes = [...(s.quotes || []), ...agentId.evidence.filter((e) => e.quote).slice(0, 1).map((e) => ({ for: "agent_identity", obs: e.obs, quote: e.quote }))];
+  return { ...s, reason: `${s.reason} ${sentence}`, basedOn: [...new Set([...s.basedOn, ...agentId.evidence.map((e) => e.obs)])], quotes };
 }
 
 export function buildFunnel(doc) {
   const d = discover(doc);
   const s = withAgentId(doc, signup(doc), `The docs also describe the agent signing in with AgentID as itself, which needs ${AGENTID_NEEDS}.`);
   const a = withAgentId(doc, access(doc, s), "Signed in with AgentID, the agent would hold its own account and get its key or session from it.");
-  const byId = { discover: d, understand: understand(doc), signup: s, access: a, pay: pay(doc), use: use(doc), manage: manage() };
+  const byId = { discover: d, understand: understand(doc), signup: s, access: a, pay: pay(doc), use: use(doc), manage: manage(doc) };
   const steps = FUNNEL_ORDER.map((id) => byId[id]);
   const chosen = choosePath(doc);
   const paths = (doc.onboarding?.patterns || []).map((p) => ({ id: p.id, name: p.name, status: p.status, humanBoundary: p.humanBoundary || null, needs: p.needs, followed: p === chosen }));
@@ -217,20 +237,25 @@ export function buildFunnel(doc) {
 // that does not pass, and whether that step is a real stop or only unproven.
 // The headline keeps two counts apart: steps the public pages document (agent_can, handoff) and steps a test with a
 // real agent verified (agent_did). Reading pages is not running a task, so a check alone never says a step works.
+// A step that does not apply is skipped: it neither passes nor stops the walk, and applicable counts the rest.
 export function summarize(steps) {
-  const firstOpen = steps.findIndex((x) => !PASSING.has(x.state));
-  const passed = firstOpen === -1 ? steps.length : firstOpen;
+  const applicable = steps.filter((x) => x.state !== "not_applicable");
+  const firstOpen = applicable.findIndex((x) => !PASSING.has(x.state));
+  const passed = firstOpen === -1 ? applicable.length : firstOpen;
   const stop = steps.find((x) => x.state === "blocked" || x.state === "needs_person") || null;
   const verified = steps.filter((x) => x.state === "agent_did").length;
   const documented = steps.filter((x) => x.state === "agent_can" || x.state === "handoff").length;
   // stepsPassing (from #78) is every passing step, the total the headline gives: documented plus verified.
-  return { headline: headlineFor(steps, documented, verified), passed, stepsPassing: documented + verified, documented, verified, of: steps.length, stopsAt: stop?.id || null, fixes: steps.filter((x) => x.fix).map((x) => ({ step: x.id, name: x.name, fix: x.fix })) };
+  return { headline: headlineFor(steps, documented, verified), passed, stepsPassing: documented + verified, documented, verified, of: steps.length, applicable: applicable.length, stopsAt: stop?.id || null, fixes: steps.filter((x) => x.fix).map((x) => ({ step: x.id, name: x.name, fix: x.fix })) };
 }
 
 function headlineFor(steps, documented, verified) {
-  if (!steps.some((x) => x.live)) return `Your public pages document ${documented} of ${steps.length} steps. No step has been tested yet: a test runs a real agent.`;
+  const skipped = steps.filter((x) => x.state === "not_applicable").map((x) => x.name);
+  const of = skipped.length ? `${steps.length - skipped.length} applicable steps` : `${steps.length} steps`;
+  const dontApply = skipped.length ? `; ${listNames(skipped)} ${skipped.length === 1 ? "doesn't" : "don't"} apply` : "";
+  if (!steps.some((x) => x.live)) return `Your public pages document ${documented} of ${of}${dontApply}. No step has been tested yet: a test runs a real agent.`;
   const failed = steps.filter((x) => x.live && x.state === "blocked").map((x) => x.name);
-  const parts = [`${verified} of ${steps.length} steps verified by a test.`];
+  const parts = [`${verified} of ${of} verified by a test${dontApply}.`];
   if (documented) parts.push(`Your public pages document ${documented} more.`);
   if (failed.length) parts.push(`${listNames(failed)} failed a test.`);
   return parts.join(" ");

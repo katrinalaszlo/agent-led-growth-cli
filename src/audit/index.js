@@ -15,6 +15,7 @@ export const DEFAULT_TASK = "Sign up, get an API key, and make one authenticated
 // reads Agent did.
 export function basisFor(step, doc) {
   if (step.live) return "tested";
+  if (step.state === "not_applicable") return "observed";
   if (step.state === "not_checked") return "not_checked";
   if (step.id === "discover") return "observed";
   if (step.id === "understand") return doc.pricing?.agentCanDetermineCost?.verdict === "yes" ? "observed" : "heuristic";
@@ -85,7 +86,11 @@ export function patternInfo(id) {
 // Everything the audit reports, from the inspection and the answers. Pure, so it is tested without a network.
 export function buildAudit({ doc, funnel, answers, task, runId, version }) {
   const pattern = patternInfo(answers.onboarding.value);
-  const steps = funnel.steps.map((s) => ({ id: s.id, name: s.name, state: s.state, basis: basisFor(s, doc), reason: s.reason, basedOn: s.basedOn, ...(s.fix ? { fix: s.fix } : {}) }));
+  // quotes: the sentences behind a claim that the product requires something, with the page each is on. A step a test
+  // decided says what the test did instead, so it carries none.
+  const urlOf = (obs) => doc.observations.find((o) => o.id === obs)?.url || null;
+  const quotesOf = (s) => (!s.live && s.quotes?.length ? { quotes: s.quotes.map((q) => ({ ...q, url: urlOf(q.obs) })) } : {});
+  const steps = funnel.steps.map((s) => ({ id: s.id, name: s.name, state: s.state, basis: basisFor(s, doc), reason: s.reason, basedOn: s.basedOn, ...quotesOf(s), ...(s.fix ? { fix: s.fix } : {}) }));
   // The chosen model is the target. A product whose docs only describe a person handing over a key passes Sign up
   // as a handoff, but if the owner chose an agent-first model, that handoff is the gap to close. Agent identity
   // counts: the agent is meant to sign in as itself (for example with AgentID), not take a key from a person.
@@ -108,6 +113,7 @@ export function buildAudit({ doc, funnel, answers, task, runId, version }) {
     headline: funnel.headline,
     documented: funnel.documented,
     verified: funnel.verified,
+    applicable: funnel.applicable ?? funnel.steps.filter((s) => s.state !== "not_applicable").length,
     pagesRead: doc.observations.filter((o) => o.ok).length,
     steps,
     onboarding: {
@@ -151,7 +157,7 @@ export function renderBrief(audit, doc) {
     lines.push(`Conflict: a verified person must exist before any use, but ${audit.onboarding.chosen.name} lets an agent act first. Consider "A person sets up access first".`, "");
   }
   lines.push("## Steps", "", "| Step | State | How we know | Evidence |", "| --- | --- | --- | --- |");
-  for (const s of audit.steps) lines.push(`| ${s.name} | ${s.state.replace("_", " ")} | ${s.basis.replace("_", " ")} | ${evidence(s.basedOn).join(", ") || "none"} |`);
+  for (const s of audit.steps) lines.push(`| ${s.name} | ${s.state.replace("_", " ")} | ${s.basis.replace("_", " ")} | ${evidence(s.basedOn).join(", ") || "none"}${(s.quotes || []).map((q) => `<br>"${q.quote.replace(/\|/g, "\\|")}"`).join("")} |`);
   lines.push("", "## Fixes", "");
   if (!audit.findings.length) lines.push("None from public pages. A test with a real agent is the next step: `npx agent-led-growth test --check` shows the plan for free, `npx agent-led-growth test` runs it.");
   for (const f of audit.findings) lines.push(`${f.n}. **${f.title}** (${f.severity}, ${f.name}). Prompt: prompts/${f.file}`);
