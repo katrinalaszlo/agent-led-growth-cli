@@ -1,6 +1,6 @@
 import { parseRobots, AI_BOTS } from "../probe/index.js";
 import { htmlToText } from "./sources.js";
-import { quoteAt } from "./quote.js";
+import { blocksOf, quoteAt } from "./quote.js";
 
 // Deterministic extraction. Every fact carries the observation it came from and a quote from that page.
 // A fact that cannot be extracted is null; callers turn nulls into unknowns. No inference happens here.
@@ -177,16 +177,48 @@ const AMBIGUITY_RE = /contact (?:us|sales)|custom pricing|talk to sales|get a qu
 // limit: Track's "4 KB per request", "What it sends, per request".
 const USAGE_RE = /usage[- ]based|pay[- ]as[- ]you[- ]go|\b(?:priced|charged|billed|paid|pay|costs?|fee|price)\s+(?:\w+\s+)?per (?:request|call|token|seat|user)\b|metered billing/gi;
 
+// A price under one of these headings is not a plan: Resend's "Domains - $20 / mo" sits under "Add-ons", AISend's
+// "$20/mo" under "How AISend Compares" is a competitor's, Neon's "$100k in credits" is under "Early-stage startups".
+// Such a price is quoted only when the page has no other.
+const NOT_A_PLAN = /\badd-?ons?\b|\boverages?\b|\bcompar\w*|\bvs\b|\bcredits?\b|\bstartups?\b|\bdiscounts?\b/i;
+// A price that is not a sentence names the heading it sits under, which is usually its plan, and the quote stays the
+// page's own words: Price under "Pro": "$14 /month".
+function withHeading(q, heading) {
+  if (!q.label || !heading || heading.length > 40 || q.quote.includes(heading)) return q;
+  return { ...q, label: `${q.label === "Phrase" ? "Price" : q.label} under "${heading}"` };
+}
+
+// The nearest heading above [start, end) that holds no price: Resend's "Dedicated IPs - $30 / mo" is a heading under
+// "Domains - $20 / mo", and both sit under "Add-ons", the section that says what they are.
+function sectionHeading(page, text, start, end) {
+  const blocks = blocksOf(page, page.obs.role);
+  if (!blocks) return "";
+  let i = blocks.findIndex((b) => b.start <= start && end <= b.end);
+  for (i -= 1; i >= 0; i -= 1) {
+    const b = blocks[i];
+    if (b.kind !== "heading") continue;
+    const words = text.slice(b.start, b.end).replace(/[#*_`]/g, " ").replace(/\s+/g, " ").trim();
+    if (!/(?:\$|€|£)\s?\d/.test(words)) return words;
+  }
+  return "";
+}
+
 function paidPriceQuote(page, text) {
   let tried = 0;
+  let fallback = null;
   for (const m of text.matchAll(PRICE_RE)) {
     // "$75M Series B" is a funding round, not a plan.
     if (!/[1-9]/.test(m[0]) || /^[MB]\b/i.test(text.slice(m.index + m[0].length))) continue;
     const q = quoteAt(page, text, m.index, m.index + m[0].length, page.obs.role);
-    if (q) return q;
-    if (++tried >= 200) return null;
+    if (q) {
+      const heading = sectionHeading(page, text, m.index, m.index + m[0].length);
+      const labelled = withHeading(q, heading);
+      if (!NOT_A_PLAN.test(heading)) return labelled;
+      fallback ??= labelled;
+    }
+    if (++tried >= 200) break;
   }
-  return null;
+  return fallback;
 }
 
 export function extractPricingPages(observations, bodies) {

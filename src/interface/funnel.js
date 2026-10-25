@@ -1,5 +1,5 @@
 import { STAGES, PILLAR } from "../schema/stages.js";
-import { AGENTID_NEEDS } from "./onboarding.js";
+import { AGENTID_NEEDS, weakQuote } from "./onboarding.js";
 import { PASSING } from "../dashboard/strip.js";
 import { freePlansOnly } from "./evaluate.js";
 
@@ -166,7 +166,7 @@ function pay(doc) {
   // A purchase the product's own pages document (src/interface/purchase.js). One approval by a person, then the agent
   // buys on its own, is a handoff: a person steps in at a documented point and the agent carries on. It is not
   // agent_can, which would say no person is needed, and not needs_person, which would say a person checks out each time.
-  const quote = (entries, what) => (entries || []).filter((e) => e.quote).slice(0, 1).map((e) => ({ for: what, obs: e.obs, quote: e.quote, ...(e.label ? { label: e.label } : {}) }));
+  const quote = (entries, what) => (entries || []).filter((e) => e.quote).sort((a, b) => weakQuote(a) - weakQuote(b)).slice(0, 1).map((e) => ({ for: what, obs: e.obs, quote: e.quote, ...(e.label ? { label: e.label } : {}) }));
   const purchase = doc.pricing?.agentPurchase;
   const purchaseRefs = (purchase?.evidence || []).map((e) => e.obs);
   const purchaseQuotes = quote(purchase?.evidence, "payment");

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.5 (2026-10-25)
+
+Quotes that say what they are for. 0.8.4's quotes were whole sentences or labelled elements, but some pointed at the wrong thing.
+
+- Prices: a price that is not a sentence names the heading it sits under, usually its plan: `Price under "Pro": "$14 /month"` (aisend.app), `Price under "Developer": "$30 / month"` (inkbox.ai). The quote itself stays the page's own words. A price under Add-ons, a comparison, credits or a discount is quoted only when the page has no other: Resend's Pay quoted "Domains - $20 / mo", an add-on, and now quotes `Table cell under "Inboxes": "$1 / inbox"`. Resend's plan cards load after the page, so they are still not read.
+- Weak quotes: a heading or list item of three words or fewer, a page title ("x402 | AgentMail | Documentation"), a question and a piece cut from inside link text are used only when the page has no sentence for the same rule. A docs-index line with a description still counts: Locus's "[x402 reference](...): Direct HTTP 402 payments via Base USDC." says what the page covers.
+- Pay per request: a comparison ("Compare Locus Pro, RapidAPI, x402 Bazaar, ...") names other products and is not evidence that this one takes x402.
+- Text: numeric HTML entities are decoded, so x402.org's quote reads "the Internet’s original sin", not "the Internet&#8217;s original sin".
+- No recorded product changed state; only quotes changed.
+
 ## 0.8.4 (2026-10-24)
 
 Quotes you can check. 0.8.3 printed each requirement with the text it came from, but the text was cut from the page as flat words, so on resend.com Pay quoted "scale as you grow. Are you an AI agent? See pricing Add-ons if you send from a": a subtitle, a link and a heading run together.

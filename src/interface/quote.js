@@ -4,6 +4,7 @@
 // you send from a": a subtitle, a link and a heading read as one sentence. When the words sit in an element with no
 // sentence (a heading, a table cell, a button, a line of code), the quote is that element's text with a label saying
 // what it is: Heading: "Domains - $20 / mo".
+import { NUMERIC_ENTITY, decodeNumeric } from "./sources.js";
 
 // Elements that start a new block. Inline elements (a, span, strong, code) stay inside the sentence they are part of.
 const BLOCK_TAG = /^<\/?\s*(address|article|aside|blockquote|br|button|caption|dd|details|dialog|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|img|input|label|legend|li|main|menu|nav|ol|option|p|pre|section|select|summary|svg|table|tbody|td|template|textarea|tfoot|th|thead|title|tr|ul)\b/i;
@@ -16,7 +17,7 @@ const PHRASE_MAX = 160;
 const SENTENCE_MAX = 320;
 
 function decode(s) {
-  return s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(NUMERIC_ENTITY, decodeNumeric);
 }
 
 // Blocks of an HTML page, with offsets into htmlToText(html): the same steps in the same order, split where a block

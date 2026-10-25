@@ -130,12 +130,43 @@ for (const [dir, file] of FIXTURES) {
   });
 }
 
-test("resend.com: Pay quotes the add-on heading, not a subtitle, a link and a heading run together", async () => {
+test("resend.com: Pay quotes a priced item outside Add-ons, with the heading it sits under", async () => {
   const data = recorded("onboarding", "resend.com.json.gz");
   const { doc, funnel } = await inspect({ url: "https://resend.com/", version: "test", runId: "r", fetchSource: replayFrom(data.responses) });
   const pay = funnel.steps.find((s) => s.id === "pay");
   assert.equal(pay.state, "needs_person");
   assert.equal(pay.quotes.length, 1);
-  assert.deepEqual({ quote: pay.quotes[0].quote, label: pay.quotes[0].label }, { quote: "Domains - $20 / mo", label: "Heading" });
+  assert.deepEqual({ quote: pay.quotes[0].quote, label: pay.quotes[0].label }, { quote: "$1 / inbox", label: 'Table cell under "Inboxes"' });
   assert.equal(doc.observations.find((o) => o.id === pay.quotes[0].obs).url, "https://resend.com/pricing");
+});
+
+// A price that is not a sentence names its plan heading, and a price under Add-ons, a comparison or startup credits is
+// quoted only when the page has no other.
+const PLAN_QUOTES = {
+  "aisend.app": ['$14 /month', 'Price under "Pro"'],
+  "inkbox.ai": ['$30 / month', 'Price under "Developer"'],
+  "www.cosmicjs.com": ['$99 /month', 'Price under "Builder"'],
+  "linear.app": ['$10 per user/month', 'Price under "Basic"'],
+};
+for (const [host, [quote, label]] of Object.entries(PLAN_QUOTES)) {
+  test(`${host}: Pay quotes a plan price with its plan heading`, async () => {
+    const data = recorded("onboarding", `${host}.json.gz`);
+    const { funnel } = await inspect({ url: `https://${host}/`, version: "test", runId: "r", fetchSource: replayFrom(data.responses) });
+    const pay = funnel.steps.find((s) => s.id === "pay");
+    assert.deepEqual({ quote: pay.quotes[0].quote, label: pay.quotes[0].label }, { quote, label });
+  });
+}
+
+test("a payment quote is a sentence when the product has one: no page title, no word or two, no comparison", async () => {
+  const quotes = {};
+  for (const host of ["agentmail.to", "paywithlocus.com", "x402.org"]) {
+    const data = recorded("onboarding", `${host}.json.gz`);
+    const { funnel } = await inspect({ url: `https://${host}/`, version: "test", runId: "r", fetchSource: replayFrom(data.responses) });
+    quotes[host] = funnel.steps.find((s) => s.id === "pay").quotes[0];
+  }
+  assert.equal(quotes["paywithlocus.com"].quote, "[x402 reference](https://paywithlocus.com/x402/index.md): Direct HTTP 402 payments via Base USDC.");
+  for (const q of Object.values(quotes)) {
+    assert.ok(q.quote.trim().split(/\s+/).length > 3, q.quote);
+    assert.doesNotMatch(q.quote, / \| |^\W*compare\b|&#\d+;/i);
+  }
 });

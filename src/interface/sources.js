@@ -157,6 +157,14 @@ export function roleForLink({ href }) {
   return null;
 }
 
+// "&#8217;" and "&#x2019;" (x402.org writes "the Internet&#8217;s original sin"). src/interface/quote.js decodes the same
+// way, so its block offsets line up with this text.
+export const NUMERIC_ENTITY = /&#(?:(\d{1,7})|x([0-9a-f]{1,6}));/gi;
+export function decodeNumeric(whole, dec, hex) {
+  const n = dec ? Number(dec) : parseInt(hex, 16);
+  return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : whole;
+}
+
 export function htmlToText(html) {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -168,6 +176,7 @@ export function htmlToText(html) {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(NUMERIC_ENTITY, decodeNumeric)
     .replace(/\s+/g, " ")
     .trim();
 }

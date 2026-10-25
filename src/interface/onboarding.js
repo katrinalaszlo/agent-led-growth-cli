@@ -354,6 +354,10 @@ function inSlug(sentence, match) {
   return re.test(sentence) && !sentence.includes(` ${match} `) && !sentence.startsWith(`${match} `);
 }
 
+// A comparison names other products: Locus's "Compare Locus Pro, RapidAPI, x402 Bazaar, Composio, Eden AI and ToolRoute
+// on billing" names x402 Bazaar, a competitor, not a way to pay Locus.
+const COMPARISON = /^\W*compare\b|\bvs\.?\s|\bversus\b|\balternatives? to\b/i;
+
 // Whether a sentence holding a match is about something else; such a match is skipped and the next one tried.
 // page: { role, names, context() } for the rules that read where the sentence is (the inbox rule).
 const SKIP = {
@@ -363,7 +367,7 @@ const SKIP = {
   emailStep: (sentence, ownDomain, match, page, label) => label === "Code" || DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || INDEX_LINE.test(sentence) || SIGNUP_ELSEWHERE.test(sentence) || OPTIONAL.test(sentence) || NO_INBOX.test(sentence) || negatedBefore(sentence, match) || !ownSignup(sentence, match, page),
   humanFirst: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || EXAMPLE.test(sentence) || negatedBefore(sentence, match),
   httpBootstrap: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || OAUTH_REGISTRATION.test(match),
-  payPerRequest: (sentence, ownDomain, match) => DOMAIN_ACTORS.test(sentence) || SELLER.test(sentence) || PROTOCOL_DESCRIPTION.test(sentence) || paysElsewhere(sentence, ownDomain) || negatedBefore(sentence, match),
+  payPerRequest: (sentence, ownDomain, match) => COMPARISON.test(sentence) || DOMAIN_ACTORS.test(sentence) || SELLER.test(sentence) || PROTOCOL_DESCRIPTION.test(sentence) || paysElsewhere(sentence, ownDomain) || negatedBefore(sentence, match),
 };
 const GLOBAL = Object.fromEntries(Object.keys(SIGNALS).map((name) => [name, new RegExp(SIGNALS[name].source, `${SIGNALS[name].flags.replace("g", "")}g`)]));
 
@@ -372,16 +376,33 @@ const GLOBAL = Object.fromEntries(Object.keys(SIGNALS).map((name) => [name, new 
 // page. Tries at most MAX_TRIED matches a page, so a page that repeats a skipped phrase thousands of times costs no
 // more than one that says it once.
 const MAX_TRIED = 200;
+// A quote that names something without saying anything about it: a heading of a word or two (x402.org's "x402"). Kept
+// only when the page has no sentence for the same rule. A docs-index line with a description is not this: Locus's
+// "[x402 reference](...): Direct HTTP 402 payments via Base USDC." says what the page covers.
+// A page title as a heading ("x402 | AgentMail | Documentation") and a list item of a few words ("About x402") say no
+// more.
+const SHORT_LABELS = new Set(["Heading", "List item", "Text", "Phrase"]);
+export function weakQuote(q) {
+  // A question, or a piece cut from inside link text ("[What is x402?"), says nothing either.
+  if (/\?\W*$/.test(q.quote) || (q.quote.match(/\[/g) || []).length !== (q.quote.match(/\]/g) || []).length) return true;
+  if (!SHORT_LABELS.has(q.label)) return false;
+  return q.quote.trim().split(/\s+/).length <= 3 || (q.label === "Heading" && / \| /.test(q.quote));
+}
 function firstKept(page, re, skip, ownDomain) {
   let tried = 0;
+  let weak = null;
   for (const m of page.text.matchAll(re)) {
     const q = quoteAt(page.body, page.text, m.index, m.index + m[0].length, page.role);
     const at = { ...page, context: () => blockContext(page.body, page.text, m.index, m.index + m[0].length, page.role) };
-    if (q && !(skip && skip(q.quote, ownDomain, m[0], at, q.label))) return { index: m.index, ...q };
+    if (q && !(skip && skip(q.quote, ownDomain, m[0], at, q.label))) {
+      if (!weakQuote(q)) return { index: m.index, ...q };
+      weak ??= { index: m.index, ...q };
+    }
+    // A weak match counts too, so a page that repeats a heading thousands of times costs no more than one.
     tried += 1;
-    if (tried >= MAX_TRIED) return null;
+    if (tried >= MAX_TRIED) break;
   }
-  return null;
+  return weak;
 }
 
 function findSignals(observations, bodies, targetUrl, names) {
@@ -444,7 +465,8 @@ function pattern(id, found, signalNames, reason) {
   // The product's agent-facing pages first: a quote from llms.txt or an agent-signup
   // page says more than the same words in homepage navigation.
   const entries = signalNames.flatMap((name) => found[name]);
-  const evidence = [...entries.filter((e) => e.agentFacing), ...entries.filter((e) => !e.agentFacing)].map(({ obs, quote, label }) => ({ obs, quote, ...(label ? { label } : {}) }));
+  const ordered = [...entries.filter((e) => e.agentFacing), ...entries.filter((e) => !e.agentFacing)];
+  const evidence = [...ordered.filter((e) => !weakQuote(e)), ...ordered.filter((e) => weakQuote(e))].map(({ obs, quote, label }) => ({ obs, quote, ...(label ? { label } : {}) }));
   const documented = signalNames.some((name) => found[name].some((entry) => entry.agentFacing));
   return {
     id,
