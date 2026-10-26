@@ -43,10 +43,13 @@ export function runAeoReady({ url, dir, cwd, timeoutMs = STANDARDS_TIMEOUT_MS, c
     child.on("close", (code, signal) => {
       clearTimeout(timer);
       const warnings = stderr.split("\n").map((l) => l.trim()).filter(Boolean);
+      // The last stderr line is the reason, but stderr of only whitespace has no lines: asking for the last one there
+      // put "… without JSON: undefined" in front of the user. So the reason is the last line that exists, or none.
+      const why = warnings.at(-1);
       const start = stdout.indexOf("{");
       if (start === -1) {
         const how = killed ? `killed after ${Math.round(timeoutMs / 1000)} s` : code === null ? `killed by ${signal}` : `exited ${code}`;
-        return resolve({ result: null, warnings, error: `aeo-ready ${how} without JSON${stderr ? `: ${warnings.slice(-1)[0]}` : ""}` });
+        return resolve({ result: null, warnings, error: `aeo-ready ${how} without JSON${why ? `: ${why}` : ""}` });
       }
       try {
         resolve({ result: JSON.parse(stdout.slice(start)), warnings, error: null });

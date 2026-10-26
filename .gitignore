@@ -2,3 +2,6 @@ node_modules/
 .alg/
 .aeo-ready/
 alg.yml
+.env
+.env.*
+!.env.example

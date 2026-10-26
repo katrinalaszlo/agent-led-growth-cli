@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.6 (2026-10-25)
+
+A killed scan says why it was killed, and the report's end cards name ALG.
+
+- Killed scans: when `aeo-ready` is killed at its deadline and its stderr holds nothing but whitespace, the error no longer ends in `: undefined`. It reads `aeo-ready killed after 15 s without JSON`, and still carries the child's last stderr line when there is one to carry.
+- End cards: the default `--cta` names `alg.katrinalaszlo.com` instead of `tansohq.com`, in `check`'s end card and in the hero and web plans' `cta` defaults. `--cta` overrides it as before.
+- The package: the build no longer copies a Finder `.DS_Store` into `skills/`, so the tarball carries only files this repository tracks. The generated `.gitignore` also covers `.env`, which matters to the mirror repository and not to a tarball.
+
 ## 0.8.5 (2026-10-25)
 
 Quotes that say what they are for. 0.8.4's quotes were whole sentences or labelled elements, but some pointed at the wrong thing.

@@ -217,12 +217,14 @@ test("bare URLs count once, without trailing punctuation, and templated URLs are
 });
 
 // Pages that once took quadratic time: every match rescanned the page for its sentence, and every unclosed "[" the
-// rest of the file for its "]".
-test("a 2 MB page on one line with thousands of guarded matches is read in under a second", async () => {
+// rest of the file for its "]". The bound is loose on purpose: 80-90 ms on an idle machine, past a second with the
+// whole suite running alongside, and a quadratic rescan takes far longer than either. It guards the shape of the
+// work, not the speed of the machine it runs on.
+test("a 2 MB page on one line with thousands of guarded matches does not rescan it", async () => {
   const text = "Your customers can check out without an account; ".repeat(42_000);
   const started = Date.now();
   const doc = await buildInterface({ url: "https://acme.dev/", version: "test", fetchSource: llmsOnly(text) });
-  assert.ok(Date.now() - started < 1000, `${Date.now() - started} ms`);
+  assert.ok(Date.now() - started < 2500, `${Date.now() - started} ms`);
   assert.deepEqual(doc.onboarding.patterns.filter((p) => AGENT_FIRST.includes(p.id)), []);
 });
 

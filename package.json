@@ -1,6 +1,6 @@
 {
   "name": "agent-led-growth",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "description": "Score: evals for agents as customers. Runs a real agent through signup, key and first call on your product, before you ship. Track, the analytics half, measures which agents convert after.",
   "type": "module",
   "bin": {
@@ -58,6 +58,6 @@
   "dependencies": {
     "commander": "^12.0.0",
     "aeo-ready": "^1.8.1",
-    "tldts": "7.4.18"
+    "tldts": "7.4.19"
   }
 }

@@ -48,7 +48,7 @@ function fixLine(fixed, remain) {
   return `${head} ${numberWord(remain)} ${remain === 1 ? "remains" : "remain"}.`;
 }
 
-export function heroPlan(report, previousReport, { label = "run 01", fixCount = null, product = "our product", cta = "tansohq.com", fixedIn = "tanso-oss", uiClip = null } = {}) {
+export function heroPlan(report, previousReport, { label = "run 01", fixCount = null, product = "our product", cta = "alg.katrinalaszlo.com", fixedIn = "tanso-oss", uiClip = null } = {}) {
   if (!previousReport) throw new Error("hero needs a previous run: the cut is Before → After");
   const before = Object.fromEntries(previousReport.stages.map((s) => [s.id, s.state]));
   const after = Object.fromEntries(report.stages.map((s) => [s.id, s.state]));

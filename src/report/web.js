@@ -37,7 +37,7 @@ function probeRows(scan) {
   }).join("");
 }
 
-export function webPlan(before, after, aggregate, { label = "tansohq.com", host = "tansohq.com", cta = "tansohq.com", button = "Request yours" } = {}) {
+export function webPlan(before, after, aggregate, { label = "tansohq.com", host = "tansohq.com", cta = "alg.katrinalaszlo.com", button = "Request yours" } = {}) {
   const warnB = WEB_PROBES.map((id) => probe(before, id)).find((p) => p.status !== "pass");
   if (!warnB) throw new Error("web cut needs a before scan with at least one web probe not passing");
   const fixedA = probe(after, warnB.id);

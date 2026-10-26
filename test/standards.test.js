@@ -134,13 +134,38 @@ describe("standards: terminal section", () => {
 });
 
 describe("standards: runAeoReady", () => {
+  // Two separate facts, tested apart because together they raced: whether a kill is reported as a kill, and whether the
+  // child's stderr reaches the message. One test cannot check both by timing a write against a deadline, because the
+  // child has to boot an interpreter first (229-310 ms idle here, past 1200 ms with the suite running alongside), and
+  // then the deadline lands before the write and the message is correctly empty. The stderr tests let the child write
+  // and then have it kill itself, so nothing depends on how fast it starts.
   it("kills aeo-ready after timeoutMs and says so, instead of reporting an exit code", async () => {
     const dir = mkdtempSync(join(tmpdir(), "standards-"));
     const cli = join(dir, "hang.mjs");
-    writeFileSync(cli, "process.stderr.write('Warning: slow\\n'); setTimeout(() => {}, 60000);\n");
-    const r = await runAeoReady({ url: "https://acme.dev/", cwd: join(dir, "vendor"), cli, timeoutMs: 300 });
+    writeFileSync(cli, "setTimeout(() => {}, 60000);\n");
+    const r = await runAeoReady({ url: "https://acme.dev/", cwd: join(dir, "vendor"), cli, timeoutMs: 1200 });
     assert.equal(r.result, null);
-    assert.equal(r.error, "aeo-ready killed after 0 s without JSON: Warning: slow");
+    assert.equal(r.error, "aeo-ready killed after 1 s without JSON");
+  });
+
+  it("carries the child's last stderr line when it dies without JSON", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "standards-"));
+    const cli = join(dir, "dies.mjs");
+    writeFileSync(cli, "process.stderr.write('Warning: slow\\n', () => process.kill(process.pid, 'SIGKILL'));\n");
+    const r = await runAeoReady({ url: "https://acme.dev/", cwd: join(dir, "vendor"), cli, timeoutMs: 5000 });
+    assert.equal(r.result, null);
+    assert.deepEqual(r.warnings, ["Warning: slow"]);
+    assert.equal(r.error, "aeo-ready killed by SIGKILL without JSON: Warning: slow");
+  });
+
+  it("stderr of only whitespace leaves the sentence ending on 'without JSON', not on undefined", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "standards-"));
+    const cli = join(dir, "blank.mjs");
+    writeFileSync(cli, "process.stderr.write('\\n', () => process.kill(process.pid, 'SIGKILL'));\n");
+    const r = await runAeoReady({ url: "https://acme.dev/", cwd: join(dir, "vendor"), cli, timeoutMs: 5000 });
+    assert.equal(r.result, null);
+    assert.deepEqual(r.warnings, [], "whitespace is not a warning");
+    assert.equal(r.error, "aeo-ready killed by SIGKILL without JSON");
   });
 
   it("a child that exits with no JSON reports its exit code", async () => {
