@@ -1,4 +1,4 @@
-import { htmlToText, registrableDomain, sameSite } from "./sources.js";
+import { htmlToText, isSoft404, registrableDomain, sameSite } from "./sources.js";
 
 // Evaluations are judgements about what an agent could do with the observed facts. Each one names the rule it applied
 // and the observations it rests on, so a reader can disagree with the rule without doubting the evidence.
@@ -237,14 +237,22 @@ export function freePlansOnly(pricing) {
 export function evaluatePricing(x, observations) {
   const pj = x.pricingJson;
   const pagesFound = x.pricingPages;
-  const pricingPage = observations.find((o) => o.ok && o.role === "pricing");
+  const pricingPage = observations.find((o) => o.ok && o.role === "pricing" && !isSoft404(o, observations));
+  const softPricing = observations.find((o) => o.ok && o.role === "pricing" && isSoft404(o, observations));
   const plans = pj?.value.plans || [];
   const priced = plans.filter((p) => typeof p.amount === "number");
   let cost;
   if (priced.length) cost = verdict("yes", `${priced.length} plan(s) with amounts in pricing.json`, obsOf(pj), "structured_plans_with_amounts");
   else if (pj) cost = verdict("no", "pricing.json exists but lists no plan with an amount", obsOf(pj), "structured_plans_with_amounts");
   else if (pagesFound.some((p) => p.value.prices.length)) cost = verdict("partial", "prices appear in page text; no structured pricing an agent can parse without reading prose", pagesFound.filter((p) => p.value.prices.length).flatMap(obsOf), "structured_plans_with_amounts");
-  else if (pricingPage) cost = verdict("no", "a pricing page exists with no currency amounts in its text", [pricingPage.id], "structured_plans_with_amounts");
+  else if (softPricing) cost = verdict("unknown", "The /pricing URL returned the same page as the homepage, so it is not a pricing page.", [], "pricing_page_distinct_from_homepage");
+  else if (pricingPage) {
+    const fact = pagesFound.find((p) => p.evidence[0]?.obs === pricingPage.id);
+    const mentioned = fact?.value?.mentionsPricing ?? /(?:pricing|plans?|price|cost)/i.test(pricingPage.excerpt || "");
+    cost = mentioned
+      ? verdict("unknown", "Pricing is mentioned, but no plan or price could be confirmed; the page may be JavaScript-rendered.", [pricingPage.id], "pricing_page_prices_confirmed")
+      : verdict("no", "a pricing page exists with no currency amounts in its text", [pricingPage.id], "structured_plans_with_amounts");
+  }
   else cost = verdict("unknown", "no pricing page or pricing.json found", [], "structured_plans_with_amounts");
   const ambiguities = [];
   for (const p of pagesFound) {

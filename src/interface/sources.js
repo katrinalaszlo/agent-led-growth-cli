@@ -46,6 +46,14 @@ const LINK_ROLES = [
 ];
 
 const MAX_OBSERVATIONS = 36;
+// A homepage that advertises a native app. Only used as one signal, and only when no web API was found.
+const MOBILE_APP = /(?:apps\.apple\.com|itunes\.apple\.com|play\.google\.com|Download on the App Store|Get it on Google Play)/i;
+
+export function isSoft404(observation, observations) {
+  if (!observation || observation.role === "homepage" || !observation.ok || !observation.sha256) return false;
+  const home = observations.find((o) => o.role === "homepage" && o.ok);
+  return Boolean(home?.sha256 && home.sha256 === observation.sha256);
+}
 const MAX_FOLLOW = 14;
 const MAX_PER_ROLE = 3;
 const SKIP_PATH = /\/(blog|news|changelog|careers|legal|privacy|terms)\b|\.(png|jpg|svg|css|js|xml|json)$/i;
@@ -194,6 +202,7 @@ function observation(id, role, url, res, discoveredVia) {
     contentType: res.contentType.split(";")[0].trim() || null,
     bytes: text.length,
     sha256: text ? sha(text) : null,
+    mobileApp: role === "homepage" ? MOBILE_APP.test(text) : false,
     fetchedAt: new Date().toISOString(),
     error: res.error || null,
     discoveredVia,

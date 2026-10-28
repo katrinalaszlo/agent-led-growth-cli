@@ -47,6 +47,19 @@ export const FIX = {
 
 const SIGNUP_PATTERNS = new Set(["try_then_claim", "limited_until_claimed", "agent_is_customer", "agent_identity"]);
 
+// A native app with no documented web API. Conservative: an app-store link alone is not enough; an API surface,
+// capabilities or a machine-readable spec keeps the normal web funnel.
+function mobileOnly(doc) {
+  const hasApi = ["yes", "partial"].includes(doc.interfaces?.api?.exists?.verdict) ||
+    (doc.capabilities || []).length > 0 ||
+    doc.interfaces?.api?.machineReadableSpec?.verdict === "yes";
+  return !hasApi && (doc.observations || []).some((o) => o.ok && o.mobileApp === true);
+}
+
+function mobileStep(id) {
+  return step(id, "not_applicable", "This looks like a mobile app with no documented web API; a web agent has no step here. Score reads public web surfaces only.", []);
+}
+
 // A sentence for each value a pattern's `needs` can hold (interface@1 lists them); an unknown value is a bug here,
 // not a word to print.
 const NEEDS_SENTENCE = {
@@ -97,6 +110,7 @@ function understand(doc) {
   const basedOn = [...(cost?.basedOn || []), ...ambiguities.flatMap((a) => a.basedOn), ...observed.flatMap((o) => (o.evidence || []).map((e) => e.obs))];
   if (cost?.verdict === "yes" && !ambiguities.length) return step("understand", "agent_can", `Prices are machine-readable: ${cost.reason}.`, basedOn);
   if (cost?.verdict === "yes") return step("understand", "agent_can", `Prices are machine-readable (${cost.reason}). Some plans say "contact us", and those need a person.`, basedOn);
+  if (cost?.verdict === "unknown" && /pricing|plan|price|cost|homepage/i.test(cost.reason || "")) return step("understand", "not_checked", cost.reason, basedOn);
   if (observed.length) return step("understand", "agent_can", "Prices are written in the page text, so an agent can read them, though it has to interpret prose to compare plans.", basedOn, "Publish every plan and price in /pricing.json so an agent can compare plans exactly.");
   if (cost?.verdict === "no") return step("understand", "blocked", `An agent cannot work out the price: ${cost.reason}.`, basedOn);
   return step("understand", "not_checked", "No prices were found in the pages read.", basedOn);
@@ -109,6 +123,7 @@ function choosePath(doc) {
 }
 
 function signup(doc) {
+  if (mobileOnly(doc)) return mobileStep("signup");
   const patterns = doc.onboarding?.patterns || [];
   const self = patterns.find((p) => SIGNUP_PATTERNS.has(p.id));
   const existing = patterns.find((p) => p.id === "existing_account");
@@ -131,6 +146,7 @@ function signup(doc) {
 }
 
 function access(doc, signupStep) {
+  if (mobileOnly(doc)) return mobileStep("access");
   const auth = doc.authentication || {};
   const methods = auth.methods || [];
   const terms = [...new Set((auth.mentions || []).map((m) => m.term))];
@@ -195,7 +211,8 @@ function pay(doc) {
   const quotedText = paidText.filter((o) => o.paidQuote);
   if (paidPlans.length || quotedText.length) return step("pay", "needs_person", "Paid plans are published. The pages read document no way for an agent to buy one, so a person may have to check out.", refs, null, paidPlans.length ? planQuote(paidPlans[0]) : quote([quotedText[0].paidQuote], "payment"));
   if (paidText.length) return step("pay", "not_checked", "Prices appear in the pages read, but not in a sentence or table that can be quoted. A test shows whether an agent can pay.", refs);
-  if (plans.length || observed.length) return step("pay", "not_checked", "Only free plans were found, so there is nothing to pay for yet.", refs);
+  if (plans.length || observed.length) return step("pay", "not_checked", "Plans or prices are mentioned, but no paid plan or purchase path was confirmed.", refs);
+  if (doc.pricing?.agentCanDetermineCost?.verdict === "unknown" && /pricing|plan|price|homepage/i.test(doc.pricing.agentCanDetermineCost.reason || "")) return step("pay", "not_checked", doc.pricing.agentCanDetermineCost.reason, refs);
   return step("pay", "not_checked", "No plans were found in the pages read.");
 }
 
@@ -209,6 +226,7 @@ function planQuote(plan) {
 }
 
 function use(doc) {
+  if (mobileOnly(doc)) return mobileStep("use");
   const caps = doc.capabilities || [];
   const api = doc.interfaces?.api;
   const refs = [...caps.flatMap((c) => c.evidence.map((e) => e.obs)), ...(api?.exists?.basedOn || [])];

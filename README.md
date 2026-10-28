@@ -77,6 +77,13 @@ npx agent-led-growth test yourproduct.com           # creates a real account; as
 
 The agent is your own Claude Code. A separate checker then calls your API with the key it got, with no key, and with a wrong key. A test uses your Claude Code's model time, capped at $5. Runs in October 2026 cost $0.06 to $0.47 and took 27 seconds to 4 minutes.
 
+## What public pages can and cannot confirm
+
+- A JavaScript-only pricing page is reported as **not confirmed**, not as free.
+- A `/pricing` URL that returns the homepage is a soft 404 and is not used as evidence.
+- A native app with no documented web API marks the web-only Sign up, Access and Use steps as **not applicable**.
+- These are limits of the check, not failures of the product. The full test with a real agent is the next step.
+
 ## Why this is different
 
 Readiness scanners read your pages and grade what is documented. Agent-experience evals run an agent from install to working code. Neither tells you whether an agent can become a customer: sign up on its own, hold a key that works, and pay.

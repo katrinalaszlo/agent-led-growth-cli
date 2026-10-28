@@ -1,5 +1,5 @@
 import { parseRobots, AI_BOTS } from "../probe/index.js";
-import { htmlToText } from "./sources.js";
+import { htmlToText, isSoft404 } from "./sources.js";
 import { blocksOf, quoteAt } from "./quote.js";
 
 // Deterministic extraction. Every fact carries the observation it came from and a quote from that page.
@@ -223,7 +223,7 @@ function paidPriceQuote(page, text) {
 
 export function extractPricingPages(observations, bodies) {
   const out = [];
-  for (const page of pages(observations, bodies, ["pricing", "homepage"])) {
+  for (const page of pages(observations, bodies, ["pricing", "homepage"]).filter((page) => !isSoft404(page.obs, observations))) {
     const text = plainText(page);
     const prices = [...new Set((text.match(PRICE_RE) || []).map((s) => s.trim()))].slice(0, 12);
     const ambiguities = [...new Set((text.match(AMBIGUITY_RE) || []).map((s) => s.toLowerCase()))];

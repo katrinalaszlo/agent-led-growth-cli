@@ -1,3 +1,12 @@
+## 0.8.7 (2026-10-28)
+
+Public-page evidence is more honest.
+
+- Pricing: a `/pricing` URL that returns the homepage is a soft 404, not evidence. It is no longer cited by Understand and cannot make Pay read as free. A JavaScript pricing shell with no plan or price is "not confirmed", never free. `freePlansOnly` still requires a parsed `pricing.json` with every plan at zero.
+- Mobile: a native app with an app-store link and no documented web API marks Sign up, Access and Use as not applicable; it no longer emits an agent-signup API prompt for an iOS or Android product.
+- No new state or schema version: the existing `not_checked` and `not_applicable` states carry the distinction, and neither gets a fix prompt.
+- Tests: soft-404, JavaScript shell, no-pricing, free pricing.json and mobile-only products are pinned.
+
 # Changelog
 
 ## 0.8.6 (2026-10-25)
