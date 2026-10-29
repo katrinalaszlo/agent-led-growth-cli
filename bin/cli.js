@@ -316,10 +316,15 @@ Examples:
     const task = config.task || DEFAULT_TASK;
     const latest = latestInterface(process.cwd(), url);
     if (latest) {
-      const steps = buildFunnel(latest.doc).steps;
-      const web = steps.filter((s) => ["signup", "access", "use"].includes(s.id));
-      if (web.length && web.every((s) => s.state === "not_applicable")) {
-        fail(opts, 2, "no_web_api", "This product looks like a mobile app with no documented web API.", "There is no signup/key flow for a test to run. Run alg check for the public-page brief; do not start a test against the app.");
+      // An interface from an older release may not build a current funnel. The guard is best-effort, never a crash.
+      try {
+        const steps = buildFunnel(latest.doc).steps;
+        const web = steps.filter((s) => ["signup", "access", "use"].includes(s.id));
+        if (web.length && web.every((s) => s.state === "not_applicable")) {
+          fail(opts, 2, "no_web_api", "This product looks like a mobile app with no documented web API.", "There is no signup/key flow for a test to run. Run alg check for the public-page brief; do not start a test against the app.");
+        }
+      } catch {
+        // Old interface.json: let the normal test flow decide.
       }
     }
     const style = makeStyle(Boolean(process.stderr.isTTY) && opts.color && !process.env.NO_COLOR && !opts.json);
