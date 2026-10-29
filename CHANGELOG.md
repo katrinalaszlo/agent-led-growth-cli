@@ -1,3 +1,11 @@
+## 0.8.9 (2026-10-29)
+
+The check no longer offers a test it cannot run.
+
+- Mobile-only/no-web-API products: `check` says "No web API to test", labels unresolved steps "needs owner confirmation", and no longer offers the test prompt. `test` refuses early with `no_web_api` instead of starting a real signup against the app.
+- Wording: "No gaps in your pages" is now "No public-page fixes", which is true even when a later test finds a human-only step.
+- Tests cover the no-test states.
+
 ## 0.8.8 (2026-10-29)
 
 Two false findings from real checks.

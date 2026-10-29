@@ -44,11 +44,17 @@ export function latestTestOutcome(funnel) {
   return tests[0]?.outcome || null;
 }
 
+// A test can only exercise the web steps. A mobile-only or no-web-API product has nothing for `test` to do.
+export function canTest(audit) {
+  const web = (audit?.steps || []).filter((s) => ["signup", "access", "use"].includes(s.id));
+  return web.some((s) => s.state !== "not_applicable");
+}
+
 // The answer to "can an agent do it?", before the tally: which steps the pages leave an agent without.
 const DOES = { discover: "finds you", understand: "understands what you sell", signup: "signs up", access: "gets a key", use: "uses the product", pay: "pays", manage: "changes a plan" };
 export function renderAnswer(audit, style) {
   const steps = [...new Set(audit.findings.map((f) => f.step))];
-  if (!steps.length) return [`  ${style.bold("No gaps in your pages. Only a test shows an agent can do it.")}`];
+  if (!steps.length) return [`  ${style.bold(canTest(audit) ? "No public-page fixes. Only a test shows an agent can do it." : "No public-page fixes. This product has no web API to test.")}`];
   const verbs = steps.map((s) => DOES[s] || s);
   const list = verbs.length === 1 ? verbs[0] : `${verbs.slice(0, -1).join(", ")} or ${verbs[verbs.length - 1]}`;
   return wrap(`Not yet. Your pages don't show how an agent ${list}.`, 76).map((line) => `  ${style.bold(line)}`);
@@ -59,7 +65,7 @@ export function renderVerdict(audit, style) {
   const unchecked = audit.steps.filter((s) => s.state === "not_checked").length;
   const parts = [];
   if (audit.findings.length) parts.push(`${plural(audit.findings.length, "needs a fix", "need a fix")}.`);
-  if (unchecked) parts.push(`${plural(unchecked, "needs", "need")} a test run.`);
+  if (unchecked) parts.push(`${plural(unchecked, "needs", "need")} ${canTest(audit) ? "a test run" : "confirmation outside public pages"}.`);
   const handoffs = audit.steps.filter((s) => s.state === "handoff").length;
   if (handoffs) parts.unshift(`${plural(handoffs, "works", "work")} because a person steps in once.`);
   // One sentence of the headline a line: "Your public pages document 5 of 7 steps." then "None is verified yet: …".
@@ -74,7 +80,8 @@ export function renderSteps(audit, style) {
   const out = [];
   for (const s of audit.steps) {
     const [first = "", ...rest] = wrap(s.reason, REASON);
-    out.push(`  ${mark(s.state, style)} ${s.name.padEnd(NAME)}  ${first.padEnd(REASON)}  ${style.dim(TAG[s.basis] || s.basis)}`);
+    const tag = s.state === "not_checked" && !canTest(audit) ? "needs owner confirmation" : TAG[s.basis] || s.basis;
+    out.push(`  ${mark(s.state, style)} ${s.name.padEnd(NAME)}  ${first.padEnd(REASON)}  ${style.dim(tag)}`);
     for (const line of rest) out.push(`  ${" ".repeat(NAME + 4)}${line}`);
     // A claim that the product requires something is shown with the sentence it came from, so a reader can check it.
     // The quote is whole (src/interface/quote.js), never cut here; an element that is not a sentence carries its label.
@@ -110,6 +117,14 @@ export function renderSummary(audit, paths, style, relative, savedTo) {
 // latestTest: the outcome of the newest local test of this product (latestTestOutcome), or null. After a passing test
 // with nothing to fix, Next says what is left instead of suggesting the same test again.
 export function renderNext(audit, paths, style, relative, latestTest = null) {
+  if (!canTest(audit)) {
+    return [
+      `  ${style.bold("Next")}  No web API to test. This product is mobile-only or has no public web API,`,
+      `        so there is no signup/key flow for a test to run.`,
+      `        ${style.bold(relative(paths.brief))} explains what to check with the owner.`,
+      "",
+    ];
+  }
   const cmd = `npx agent-led-growth test ${audit.target.host}`;
   const test = [`        ${style.bold(`${cmd} --check`)}`, `        ${style.bold(cmd)}`, ""];
   const step3 = "Step 3 of 3: test. The plan is free; a signup uses your Claude Code.";

@@ -23,9 +23,10 @@ import { buildInterface } from "../src/interface/index.js";
 import { validateInterface } from "../src/interface/schema.js";
 import { runHarness, TASKS } from "../src/harness/index.js";
 import { inspect, buildAudit, writeAudit, parseTarget, unreachableReason, DEFAULT_TASK } from "../src/audit/index.js";
+import { buildFunnel } from "../src/interface/funnel.js";
 import { defaultAnswers, askQuestions, QUESTIONS } from "../src/audit/questions.js";
 import { readConfig, writeConfig, writeVerifyCall, configHost, CONFIG_FILE } from "../src/audit/config.js";
-import { makeStyle, renderAnswer, renderVerdict, renderSteps, renderSummary, renderNext, renderStandardsStart, renderStandards, renderStrip, latestTestOutcome } from "../src/audit/render.js";
+import { makeStyle, renderAnswer, renderVerdict, renderSteps, renderSummary, renderNext, renderStandardsStart, renderStandards, renderStrip, latestTestOutcome, canTest } from "../src/audit/render.js";
 import { localJourney, localTestRuns } from "../src/verify/journey.js";
 import { applyEvidence } from "../src/interface/evidence.js";
 import { runStandards } from "../src/audit/standards.js";
@@ -228,8 +229,9 @@ Examples:
     if (opts.json) process.stdout.write(JSON.stringify({ ...audit, files }, null, 2) + "\n");
     if (opts.failOn && audit.findings.some((f) => FAIL_ON[opts.failOn].includes(f.severity))) process.exitCode = 1;
     // With nothing to fix, the next step is a test, and a person at a terminal can start it here.
+    // Never offer it when the check found no web API: there is no signup/key flow for the agent to exercise.
     const canAsk = Boolean(process.stdin.isTTY && process.stderr.isTTY) && !opts.yes && !opts.json;
-    if (canAsk && !audit.findings.length && !testPassed) await offerTest({ audit, style, say });
+    if (canAsk && !audit.findings.length && !testPassed && canTest(audit)) await offerTest({ audit, style, say });
   });
 
 // check reads public pages; test has a real agent do the steps. With nothing to fix, a person at a terminal can
@@ -312,6 +314,14 @@ Examples:
     const useSaved = Boolean(saved) && (!input || savedFor === host);
     const config = useSaved ? saved : { url: host, ...latestAnswers(process.cwd(), url) };
     const task = config.task || DEFAULT_TASK;
+    const latest = latestInterface(process.cwd(), url);
+    if (latest) {
+      const steps = buildFunnel(latest.doc).steps;
+      const web = steps.filter((s) => ["signup", "access", "use"].includes(s.id));
+      if (web.length && web.every((s) => s.state === "not_applicable")) {
+        fail(opts, 2, "no_web_api", "This product looks like a mobile app with no documented web API.", "There is no signup/key flow for a test to run. Run alg check for the public-page brief; do not start a test against the app.");
+      }
+    }
     const style = makeStyle(Boolean(process.stderr.isTTY) && opts.color && !process.env.NO_COLOR && !opts.json);
     if (saved && !useSaved && !opts.json) {
       const home = homedir();

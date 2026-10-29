@@ -290,7 +290,11 @@ function headlineFor(steps, documented, verified) {
   const skipped = steps.filter((x) => x.state === "not_applicable").map((x) => x.name);
   const of = skipped.length ? `${steps.length - skipped.length} applicable steps` : `${steps.length} steps`;
   const dontApply = skipped.length ? `; ${listNames(skipped)} ${skipped.length === 1 ? "doesn't" : "don't"} apply` : "";
-  if (!steps.some((x) => x.live)) return `Your public pages document ${documented} of ${of}${dontApply}. No step has been tested yet: a test runs a real agent.`;
+  if (!steps.some((x) => x.live)) {
+    const web = steps.filter((x) => ["signup", "access", "use"].includes(x.id));
+    const noWebTest = web.length > 0 && web.every((x) => x.state === "not_applicable");
+    return `Your public pages document ${documented} of ${of}${dontApply}. ${noWebTest ? "No web API test applies." : "No step has been tested yet: a test runs a real agent."}`;
+  }
   const failed = steps.filter((x) => x.live && x.state === "blocked").map((x) => x.name);
   const parts = [`${verified} of ${of} verified by a test${dontApply}.`];
   if (documented) parts.push(`Your public pages document ${documented} more.`);
