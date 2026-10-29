@@ -1,3 +1,8 @@
+## 0.8.10 (2026-10-29)
+
+- The Manage row on a mobile-only/no-web-API product no longer says a test run is the only proof. It says the plan change cannot be checked here and to ask the owner.
+- The no-test guard from 0.8.9 is unchanged.
+
 ## 0.8.9 (2026-10-29)
 
 The check no longer offers a test it cannot run.

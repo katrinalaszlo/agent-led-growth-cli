@@ -241,6 +241,7 @@ function use(doc) {
 }
 
 function manage(doc) {
+  if (mobileOnly(doc)) return step("manage", "not_checked", "This is a mobile app with no documented web API; plan changes cannot be checked here. Ask the owner.", []);
   const plans = doc.pricing?.plans || [];
   if (plans.length === 1 && freePlansOnly(doc.pricing) && !doc.pricing.agentPurchase) return step("manage", "not_applicable", "One free plan: no plan or limit to change.", (plans[0].evidence || []).map((e) => e.obs));
   return step("manage", "not_checked", "Changing a plan or a limit can only be proven by a test run.");

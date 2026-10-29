@@ -57,6 +57,7 @@ test("a PWA with documented actions but no web API is not mistaken for an API pr
   assert.equal(steps.signup.state, "not_applicable");
   assert.equal(steps.access.state, "not_applicable");
   assert.equal(steps.use.state, "not_applicable");
+  assert.match(steps.manage.reason, /mobile app|Ask the owner/i);
   const audit = { target: { host: "acme.dev" }, steps: Object.values(steps), findings: [], headline: "Your public pages document 1 of 4 applicable steps; Sign up, Access and Use don't apply. No web API test applies." };
   assert.equal(canTest(audit), false);
   assert.match(renderNext(audit, { brief: "/tmp/brief.md" }, { bold: (s) => s }, (p) => p).join("\n"), /No web API to test/);
