@@ -14,7 +14,7 @@ async function funnelOf(pages, url = "https://acme.dev/") {
 }
 
 test("a pricing URL that returns the homepage is a soft 404, not evidence", async () => {
-  const steps = await funnelOf({ "https://acme.dev/": home, "https://acme.dev/pricing": home });
+  const steps = await funnelOf({ "https://acme.dev/": home, "https://acme.dev/pricing": home.replace("</body>", "<script>boot()</script></body>") });
   assert.equal(steps.understand.state, "not_checked");
   assert.match(steps.understand.reason, /same page as the homepage|pricing page/i);
   assert.deepEqual(steps.understand.basedOn, []);
@@ -47,6 +47,15 @@ test("a native app with no web API marks the web-only steps not applicable", asy
   assert.equal(steps.use.state, "not_applicable");
   assert.equal(steps.signup.fix, undefined);
   assert.match(steps.signup.reason, /mobile app|web API/i);
+});
+
+test("a PWA with documented actions but no web API is not mistaken for an API product", async () => {
+  const pwa = `<html><head><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Ethical Eaters"></head><body>Ethical Eaters</body></html>`;
+  const llms = "# Ethical Eaters\n\n- /free-sourcing-info\n- /join\n- /how-it-works\n- /faq\n- /blog\n- /research";
+  const steps = await funnelOf({ "https://acme.dev/": pwa, "https://acme.dev/llms.txt": llms });
+  assert.equal(steps.signup.state, "not_applicable");
+  assert.equal(steps.access.state, "not_applicable");
+  assert.equal(steps.use.state, "not_applicable");
 });
 
 test("a web product with no API but no app-store signal keeps the normal funnel", async () => {

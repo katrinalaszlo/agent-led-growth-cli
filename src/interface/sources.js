@@ -47,12 +47,15 @@ const LINK_ROLES = [
 
 const MAX_OBSERVATIONS = 36;
 // A homepage that advertises a native app. Only used as one signal, and only when no web API was found.
-const MOBILE_APP = /(?:apps\.apple\.com|itunes\.apple\.com|play\.google\.com|Download on the App Store|Get it on Google Play)/i;
+const MOBILE_APP = /(?:apps\.apple\.com|itunes\.apple\.com|play\.google\.com|Download on the App Store|Get it on Google Play|apple-mobile-web-app-capable|apple-mobile-web-app-title|apple-itunes-app)/i;
 
 export function isSoft404(observation, observations) {
-  if (!observation || observation.role === "homepage" || !observation.ok || !observation.sha256) return false;
+  if (!observation || observation.role === "homepage" || !observation.ok) return false;
   const home = observations.find((o) => o.role === "homepage" && o.ok);
-  return Boolean(home?.sha256 && home.sha256 === observation.sha256);
+  if (!home) return false;
+  // SPAs can return the same visible page with different scripts or hydration state. Compare visible text first.
+  if (home.plainSha256 && observation.plainSha256) return home.plainSha256 === observation.plainSha256;
+  return Boolean(home.sha256 && home.sha256 === observation.sha256);
 }
 const MAX_FOLLOW = 14;
 const MAX_PER_ROLE = 3;
@@ -202,6 +205,7 @@ function observation(id, role, url, res, discoveredVia) {
     contentType: res.contentType.split(";")[0].trim() || null,
     bytes: text.length,
     sha256: text ? sha(text) : null,
+    plainSha256: text ? sha(isHtml(res) ? htmlToText(text) : text) : null,
     mobileApp: role === "homepage" ? MOBILE_APP.test(text) : false,
     fetchedAt: new Date().toISOString(),
     error: res.error || null,

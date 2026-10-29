@@ -1,3 +1,11 @@
+## 0.8.8 (2026-10-29)
+
+Two false findings from real checks.
+
+- Soft 404s: an SPA can return the same visible page at `/pricing` with different scripts or hydration state. Soft-404 detection now compares visible text as well as the raw body hash. goquarry.com's Understand is now "not confirmed" and no longer cites `/pricing`.
+- Mobile/PWA: a documented action list is not an API. A PWA or native app with no web API now marks Sign up, Access and Use as not applicable, even when `llms.txt` documents actions. ethicaleatersapp.com no longer gets an agent-signup API fix.
+- Tests pin both cases.
+
 ## 0.8.7 (2026-10-28)
 
 Public-page evidence is more honest.

@@ -51,7 +51,6 @@ const SIGNUP_PATTERNS = new Set(["try_then_claim", "limited_until_claimed", "age
 // capabilities or a machine-readable spec keeps the normal web funnel.
 function mobileOnly(doc) {
   const hasApi = ["yes", "partial"].includes(doc.interfaces?.api?.exists?.verdict) ||
-    (doc.capabilities || []).length > 0 ||
     doc.interfaces?.api?.machineReadableSpec?.verdict === "yes";
   return !hasApi && (doc.observations || []).some((o) => o.ok && o.mobileApp === true);
 }
