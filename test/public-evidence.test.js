@@ -60,6 +60,7 @@ test("a PWA with documented actions but no web API is not mistaken for an API pr
   const audit = { target: { host: "acme.dev" }, steps: Object.values(steps), findings: [], headline: "Your public pages document 1 of 4 applicable steps; Sign up, Access and Use don't apply. No web API test applies." };
   assert.equal(canTest(audit), false);
   assert.match(renderNext(audit, { brief: "/tmp/brief.md" }, { bold: (s) => s }, (p) => p).join("\n"), /No web API to test/);
+  assert.equal(canTest({ steps: [{ id: "signup", state: "blocked" }, { id: "access", state: "not_applicable" }, { id: "use", state: "not_applicable" }] }), false);
 });
 
 test("a web product with no API but no app-store signal keeps the normal funnel", async () => {

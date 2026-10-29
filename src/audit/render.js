@@ -47,6 +47,9 @@ export function latestTestOutcome(funnel) {
 // A test can only exercise the web steps. A mobile-only or no-web-API product has nothing for `test` to do.
 export function canTest(audit) {
   const web = (audit?.steps || []).filter((s) => ["signup", "access", "use"].includes(s.id));
+  // If two web steps are not applicable, the product is mobile-only/no-web-API. A stale failed test on the third
+  // step must not re-enable the test prompt.
+  if (web.filter((s) => s.state === "not_applicable").length >= 2) return false;
   return web.some((s) => s.state !== "not_applicable");
 }
 
